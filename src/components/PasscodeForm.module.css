@@ -1,0 +1,81 @@
+/* 合言葉の入力画面 */
+
+.wrapper {
+  width: 100%;
+  max-width: 480px;
+  margin: 48px auto;
+  padding: 32px 24px;
+  background: var(--color-primary-light);
+  border-radius: var(--radius);
+}
+
+.lead {
+  font-size: 1.05rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  margin-top: 24px;
+}
+
+.label {
+  font-weight: 700;
+}
+
+.input {
+  margin-top: 8px;
+  padding: 14px 16px;
+  background: var(--background);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 1.1rem;
+}
+
+.input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.input:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.error {
+  min-height: 1.7em; /* エラーが出ても、ボタンの位置がずれないようにする */
+  margin-top: 4px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-error);
+}
+
+/* 「はじめる」ボタン：送信ボタンと同じ、ひまわり色 */
+.button {
+  min-height: 56px;
+  margin-top: 8px;
+  background: var(--color-accent);
+  border: none;
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.button:disabled {
+  background: var(--color-border);
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .wrapper {
+    margin: 24px auto;
+    padding: 24px 16px;
+  }
+}

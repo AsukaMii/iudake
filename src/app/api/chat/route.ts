@@ -10,7 +10,9 @@ import {
   toUIMessageStream,
   type UIMessage,
 } from "ai";
+import { cookies } from "next/headers";
 import { tools } from "@/lib/ai/tools";
+import { AUTH_COOKIE_NAME, isValidAuthToken } from "@/lib/auth";
 
 // 使いすぎ防止のための上限
 const MAX_MESSAGES = 20; // 1回の会話で送れるメッセージの件数
@@ -52,6 +54,15 @@ function countUserChars(message: UIMessage): number {
 }
 
 export async function POST(req: Request) {
+  // 合言葉のチェック（合格の印がなければ、AIを呼ばずに断る）
+  const token = (await cookies()).get(AUTH_COOKIE_NAME)?.value;
+  if (!isValidAuthToken(token)) {
+    return Response.json(
+      { error: "合言葉を入力してください。ページを再読み込みすると、入力欄が出ます。" },
+      { status: 401 }
+    );
+  }
+
   const { messages }: { messages: UIMessage[] } = await req.json();
 
   // 入力のチェック（上限を超えたら、AIを呼ばずに断る）
@@ -74,6 +85,17 @@ export async function POST(req: Request) {
     );
   }
 
+  // 承認の署名に使う秘密の文字列（ブラウザからの承認の偽造を防ぐ）
+  // ※ ないと署名なしで動いてしまうので、設定がなければ止める
+  const toolApprovalSecret = process.env.TOOL_APPROVAL_SECRET;
+  if (!toolApprovalSecret) {
+    console.error("TOOL_APPROVAL_SECRET が設定されていません。.env.local を確認してください。");
+    return Response.json(
+      { error: "サーバーの設定に問題があります。管理者にお知らせください。" },
+      { status: 500 }
+    );
+  }
+
   const result = streamText({
     model: anthropic("claude-haiku-5-5"),
     instructions: INSTRUCTIONS,
@@ -85,6 +107,9 @@ export async function POST(req: Request) {
       publishPost: "user-approval",
       editPage: "user-approval",
     },
+    // 承認ボタンを出すときに署名し、押されて戻ってきたときに確かめる
+    // （ツール名・呼び出しID・入力内容が書き換えられていたら、実行せずに断る）
+    experimental_toolApprovalSecret: toolApprovalSecret,
     stopWhen: isStepCount(MAX_STEPS), // ツールの結果を受けて、続けて返答できるようにする
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     reasoning: "low", // 考える量を少なめにして、速く・安くする

@@ -118,13 +118,19 @@
   - [x] 4-3. 画面から試す（反映・いいえ・リビジョンでの確認）
 - [x] 5. 音声入力（src/components/VoiceInputButton.tsx。聞き取った文字は入力欄に入れ、送信は利用者が押す）
 - [ ] 6. 公開・README ← 次回はここから
+  - [x] 6-1. 合言葉の仕組み（src/lib/auth.ts、src/app/api/auth/route.ts、chat/route.ts でチェック。.env.local の DEMO_PASSCODE）
+  - [x] 6-2. 合言葉の入力画面（src/components/PasscodeForm.tsx、page.tsx で出し分け）
+  - [x] 6-3. 承認の署名（experimental_toolApprovalSecret。.env.local の TOOL_APPROVAL_SECRET。未設定ならエラーで止める）
+  - [ ] 6-4. 公開用WordPress（エックスサーバー：https://iudake-demo.asuka-lab.com）につなぐ
+  - [ ] 6-5. Vercelに公開（環境変数の設定）、スマホでの音声入力の確認
+  - [ ] 6-6. README
 
 ### 次回の作業メモ（2026-10-30時点）
 
-- ステップ6（デモの明記・README・公開）から始める。最初に相談すること：
-  - Vercelからは、Mac内のLocalのWordPressにつながらない。公開用のWordPressをどう用意するか
-  - 誰でも使えるとWordPressを書き換えられ、APIの料金もかかる。合言葉・回数制限などの対策
-  - experimental_toolApprovalSecret の設定
+- 6-4 から始める。公開用WordPressの状況（2026-10-30時点）：
+  - エックスサーバーにインストール済み（サイト名「ひまわり工務店（デモ）」、CloudSecure WP Security 有効）。サーバー設定の反映待ちで「無効なURLです」と表示されていた
+  - 開けるようになったら：設定 → 一般 で2つのURLを https:// に直す／REST API アクセス制限（WordPressセキュリティ設定）を OFF／検索エンジンにインデックスさせない／会社概要とお知らせを用意／編集者の iudake-bot を作り、アプリケーションパスワードを発行
+  - つながらないときは、CloudSecure WP Security の設定も確認する
 - スマホでの音声入力の確認は、公開（https）後に行う
 - READMEに書くこと：Chromeの音声認識では、声がGoogleのサーバーに送られて文字になる
 - 開発サーバーは、VS Codeの新しいターミナル（右上の「＋」）で npm run dev を実行して起動する
