@@ -6,6 +6,8 @@ import { tool } from "ai";
 import { z } from "zod";
 import {
   createDraftPost,
+  editPageText,
+  getPage,
   listPages,
   publishDraftPost,
   listPosts,
@@ -26,6 +28,41 @@ export const tools = {
       "サイトの固定ページ（会社概要など）の一覧を取得する。公開済みと下書きの両方を含む。",
     inputSchema: z.object({}), // 入力なし
     execute: async () => listPages(),
+  }),
+
+  // 固定ページ1件の内容（本文）を取得する
+  getPage: tool({
+    description:
+      "固定ページ1件のタイトルと本文を取得する。固定ページを修正する前に、必ずこれで今の本文を確かめること。",
+    inputSchema: z.object({
+      id: z.number().int().positive().describe("固定ページのID（listPages で確かめる）"),
+    }),
+    execute: async ({ id }) => getPage(id),
+  }),
+
+  // 固定ページの文章の一部を差し替える
+  // ※ 利用者が画面で承認したときだけ実行される（route.ts の toolApproval で設定）
+  editPage: tool({
+    description:
+      "固定ページの文章の一部を差し替える。before には getPage で取得した本文の中にある文字を、そのまま1か所だけに当てはまる長さで書く。HTMLタグや <!-- --> の記号は含めないこと。",
+    inputSchema: z.object({
+      id: z.number().int().positive().describe("修正する固定ページのID"),
+      title: z
+        .string()
+        .min(1)
+        .describe("修正する固定ページのタイトル（getPage の結果と完全に同じ文字）"),
+      edits: z
+        .array(
+          z.object({
+            before: z.string().min(1).max(500).describe("変更前の文字（本文にあるものをそのまま）"),
+            after: z.string().max(500).describe("変更後の文字"),
+          })
+        )
+        .min(1)
+        .max(10)
+        .describe("差し替えの一覧（10件まで）"),
+    }),
+    execute: async ({ id, title, edits }) => editPageText({ id, title, edits }),
   }),
 
   // お知らせを下書きで作成する

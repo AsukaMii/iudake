@@ -319,3 +319,64 @@
     min-width: 100px;
   }
 }
+
+/* ページ修正のプレビュー（変更前 → 変更後） */
+.diffList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.diff {
+  padding: 12px 16px;
+  background: var(--background);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.diffBefore,
+.diffAfter {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diffAfter {
+  margin-top: 6px;
+}
+
+/* 「変更前」「変更後」のラベル（色だけに頼らず、文字でも区別する） */
+.diffLabel {
+  flex-shrink: 0;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.diffBefore .diffLabel {
+  background: var(--color-border);
+  color: var(--foreground);
+}
+
+.diffAfter .diffLabel {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* 変更前：取り消し線で、薄めの色 */
+.diffBefore del {
+  color: var(--color-muted);
+  text-decoration-thickness: 2px;
+}
+
+/* 変更後：ひまわり色の下地で目立たせる */
+.diffAfter ins {
+  background: var(--color-accent-light);
+  text-decoration: none;
+  font-weight: 700;
+}

@@ -215,3 +215,58 @@ export async function updatePage(input: {
   );
   return { ...toSummary(item), content: item.content.raw };
 }
+
+// 固定ページの文章の一部を差し替える（1つの差し替え）
+export type PageTextEdit = {
+  before: string; // 変更前の文字（本文の中にちょうど1か所あること）
+  after: string; // 変更後の文字
+};
+
+// 文字の中に、探したい文字が何か所あるかを数える
+function countOccurrences(text: string, search: string): number {
+  return text.split(search).length - 1;
+}
+
+// 固定ページの文章を、差し替え方式で修正する
+// ※ 利用者が画面で「反映する」を押したときだけ呼ばれる
+// ※ 本文の全文は受け取らず、「この文字をこう変える」だけを受け取る
+//   （ブロックの記号やデザインを壊さないようにするため）
+// ※ 1つでも確認に失敗したら、何も変えずにエラーにする
+export async function editPageText(input: {
+  id: number;
+  title: string; // 承認画面で見せたタイトル
+  edits: PageTextEdit[];
+}): Promise<WpItemSummary> {
+  const page = await getPage(input.id);
+
+  // 1. タイトルが一致するか（違うページを書き換えないように）
+  if (page.title !== input.title) {
+    throw new Error("ページのタイトルが一致しないため、修正を中止しました。");
+  }
+
+  let content = page.content;
+  for (const edit of input.edits) {
+    // 2. HTMLタグを含んでいないか（ブロックやデザインを触らせない）
+    if (/[<>]/.test(edit.before) || /[<>]/.test(edit.after)) {
+      throw new Error("HTMLタグを含む修正はできません。");
+    }
+    // 3. 変更前の文字が、ちょうど1か所だけあるか
+    const count = countOccurrences(content, edit.before);
+    if (count === 0) {
+      throw new Error(`「${edit.before}」がページの中に見つかりませんでした。`);
+    }
+    if (count > 1) {
+      throw new Error(
+        `「${edit.before}」がページの中に${count}か所あるため、どこを変えるか決められません。`
+      );
+    }
+    // 差し替える（replace は $ などの記号を特別扱いするので、split と join を使う）
+    content = content.split(edit.before).join(edit.after);
+  }
+
+  // 更新する（変更前の内容は、WordPressがリビジョンとして自動で残す）
+  const updated = await updatePage({ id: input.id, content });
+  // 返すのは本文以外だけにする（AIに長い本文を返さないため）
+  const { id, title, status, date, modified, link } = updated;
+  return { id, title, status, date, modified, link };
+}

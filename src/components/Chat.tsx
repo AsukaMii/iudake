@@ -40,12 +40,21 @@ const TOOL_LABELS: Record<string, { running: string; done: string }> = {
     running: "お知らせを公開しています…",
     done: "お知らせをサイトに公開しました",
   },
+  getPage: {
+    running: "ページの内容を確認しています…",
+    done: "ページの内容を確認しました",
+  },
+  editPage: {
+    running: "ページを修正しています…",
+    done: "ページの修正をサイトに反映しました",
+  },
 };
 
 // 承認で「いいえ」を選んだときに表示する説明
 const DENIED_LABELS: Record<string, string> = {
   createDraftPost: "作成をやめました",
   publishPost: "公開しませんでした（下書きのまま残っています）",
+  editPage: "修正しませんでした（ページは変わっていません）",
 };
 
 // エラーの文面を取り出す
@@ -69,7 +78,14 @@ type DraftPostInput = { title: string; content: string };
 // publishPost に渡される内容（投稿IDとタイトル）
 type PublishPostInput = { id: number; title: string };
 
-// publishPost の結果のうち、画面で使うもの（公開ページのURL）
+// editPage に渡される内容（ページID・タイトル・差し替えの一覧）
+type EditPageInput = {
+  id: number;
+  title: string;
+  edits: { before: string; after: string }[];
+};
+
+// publishPost・editPage の結果のうち、画面で使うもの（公開ページのURL）
 type PublishPostOutput = { link: string };
 
 // 1つのメッセージの中身（文章・ツールの状態）を表示する
@@ -178,6 +194,55 @@ function MessageParts({
             );
           }
 
+          // ページ修正の承認待ち：変更前・変更後のプレビューと「反映する／いいえ」ボタンを出す
+          if (part.state === "approval-requested" && name === "editPage") {
+            const input = part.input as EditPageInput;
+            return (
+              <div key={index} className={styles.approval}>
+                <p className={styles.approvalTitle}>
+                  「{input.title}」のページを、次のように修正しますか？
+                </p>
+                <ul className={styles.diffList}>
+                  {input.edits.map((edit, i) => (
+                    <li key={i} className={styles.diff}>
+                      <p className={styles.diffBefore}>
+                        <span className={styles.diffLabel}>変更前</span>
+                        <del>{edit.before}</del>
+                      </p>
+                      <p className={styles.diffAfter}>
+                        <span className={styles.diffLabel}>変更後</span>
+                        <ins>{edit.after || "（削除）"}</ins>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+                <p className={styles.approvalNote}>
+                  ※ 反映すると、すぐにサイトに表示されます。修正前の内容はWordPressに残るので、あとで元に戻せます。
+                </p>
+                <div className={styles.approvalButtons}>
+                  <button
+                    type="button"
+                    className={styles.approve}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: true })
+                    }
+                  >
+                    反映する
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.deny}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: false })
+                    }
+                  >
+                    いいえ
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
           // 「いいえ」を選んだとき
           if (part.state === "output-denied") {
             return (
@@ -187,8 +252,11 @@ function MessageParts({
             );
           }
 
-          // 公開できたとき：公開ページへのリンクも出す
-          if (part.state === "output-available" && name === "publishPost") {
+          // 公開・修正できたとき：公開ページへのリンクも出す
+          if (
+            part.state === "output-available" &&
+            (name === "publishPost" || name === "editPage")
+          ) {
             const output = part.output as PublishPostOutput;
             return (
               <p key={index} className={`${styles.tool} ${styles.toolDone}`}>
@@ -208,7 +276,7 @@ function MessageParts({
           if (part.state === "output-error") {
             return (
               <p key={index} className={`${styles.tool} ${styles.toolError}`}>
-                うまくいきませんでした（WordPressにつながらない可能性があります）
+                うまくいきませんでした（サイトは変更されていません）
               </p>
             );
           }

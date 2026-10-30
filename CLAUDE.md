@@ -55,6 +55,7 @@
   - publishPost：下書きのお知らせを公開（承認ボタン「公開する／いいえ」。下書きであること・タイトル一致を確認してから公開）
   - proposePageEdit：固定ページの修正案を作る（この時点ではWordPressは変更しない）
   - 実際の更新は、利用者が画面の「反映する」ボタンを押したときにサーバーが行う
+  - ※ 実装では proposePageEdit の代わりに editPage（差し替え方式：変更前・変更後の文字の組み合わせを渡す）＋ 承認ボタン「反映する／いいえ」にした。変更前の文字がちょうど1か所あること・HTMLタグを含まないこと・タイトル一致をサーバーで確認してから更新する
 - 使いすぎ防止のため、会話件数・文字数・返答の長さに上限を設ける
 
 ## 技術構成
@@ -111,14 +112,18 @@
   - [x] 3-3b. チャット画面本体（src/components/Chat.tsx / Chat.module.css / page.tsx / page.module.css）
   - [x] 3-4. 画面から「お知らせの下書き作成」を試す
   - [x] 3-5. 承認ボタン（AI SDKのツール実行の承認）と、下書き → 公開の2段階
-- [ ] 4. 固定ページの修正（プレビュー・承認）← 次回はここから
-- [ ] 5. 音声入力
+- [x] 4. 固定ページの修正（プレビュー・承認）
+  - [x] 4-1. editPageText（wordpress.ts）、getPage / editPage ツール、承認の設定
+  - [x] 4-2. 変更前 → 変更後のプレビューと「反映する／いいえ」ボタン
+  - [x] 4-3. 画面から試す（反映・いいえ・リビジョンでの確認）
+- [ ] 5. 音声入力 ← 次回はここから
 - [ ] 6. 公開・README
 
 ### 次回の作業メモ（2026-10-30時点）
 
-- ステップ4（固定ページの修正：修正案 → プレビュー → 承認 → 反映）から始める
-  - ステップ3で作った「ツール実行の承認」の仕組みが使えそう（CLAUDE.mdの案の proposePageEdit ＋「反映する」ボタンとどう合わせるか、最初に相談する）
+- ステップ5（音声入力ボタン：Web Speech API）から始める
+  - Chat.tsx の入力欄の横にマイクボタンを置く想定。聞き取った文字は入力欄に入れ、送信は利用者が押す形にするか最初に相談する
+  - 対応していないブラウザ（Firefoxなど）ではボタンを出さない／説明を出す
 - 開発サーバーは、VS Codeの新しいターミナル（右上の「＋」）で npm run dev を実行して起動する
 - AI SDK v7の書き方（1作目のv5から変更あり）：system → instructions、stepCountIs → isStepCount、返し方は createUIMessageStreamResponse({ stream: toUIMessageStream({ stream: result.stream }) })。詳しくは node_modules/ai/docs を確認する
 - 承認の書き方（v7）：サーバーは streamText の toolApproval: { ツール名: "user-approval" }。画面は part.state === "approval-requested" でボタンを出し、addToolApprovalResponse({ id: part.approval.id, approved })。useChat に sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses を付けると自動で会話が続く
