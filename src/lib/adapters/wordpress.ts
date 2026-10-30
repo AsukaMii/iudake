@@ -145,6 +145,7 @@ function textToBlocks(text: string): string {
 
 // お知らせ（投稿）を下書きで作成する
 // ※ 安全のため、必ず下書き（draft）で作る。公開は利用者がWordPressで行う
+//   （または、利用者が画面で承認したときに publishDraftPost で公開する）
 export async function createDraftPost(input: {
   title: string;
   content: string; // ただの文章（改行・空行はそのまま段落になる）
@@ -160,6 +161,34 @@ export async function createDraftPost(input: {
       }),
     }
   );
+  return toSummary(item);
+}
+
+// 下書きのお知らせ（投稿）を公開する
+// ※ 利用者が画面で「はい、公開する」を押したときだけ呼ばれる
+// ※ 間違ったお知らせを公開しないように、公開する前に次の2つを確かめる
+//   1. 今「下書き」であること（公開済みや予約投稿などは触らない）
+//   2. タイトルが、利用者が承認画面で見たものと一致すること
+export async function publishDraftPost(input: {
+  id: number;
+  title: string; // 承認画面で見せたタイトル
+}): Promise<WpItemSummary> {
+  const fields = "context=edit&_fields=id,title,status,date,modified,link";
+
+  // まず今の状態を取得する
+  const current = await wpFetch<WpRawItem>(`/wp/v2/posts/${input.id}?${fields}`);
+  if (current.status !== "draft") {
+    throw new Error("このお知らせは下書きではないため、公開できません。");
+  }
+  if (current.title.raw !== input.title) {
+    throw new Error("タイトルが一致しないため、公開を中止しました。");
+  }
+
+  // 公開状態だけを変える（本文などは送らない）
+  const item = await wpFetch<WpRawItem>(`/wp/v2/posts/${input.id}?${fields}`, {
+    method: "POST",
+    body: JSON.stringify({ status: "publish" }),
+  });
   return toSummary(item);
 }
 

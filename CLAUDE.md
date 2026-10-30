@@ -44,14 +44,15 @@
 
 - 対象：1つのWordPressサイト（接続情報は .env.local に置く。複数サイト対応やログインは後回し）
 - できること
-  1. お知らせ（投稿）を追加する：内容を聞き取り、下書きとして作成
+  1. お知らせ（投稿）を追加する：内容を聞き取り、下書きとして作成 → 承認ボタンで公開まで
   2. 固定ページの文章を修正する：対象ページを探し、修正案を作ってプレビュー → 承認で更新
   3. 投稿・固定ページの一覧を見せる
 - 入力：チャット ＋ 音声入力ボタン（まずはブラウザの音声認識 Web Speech API を使う）
 - AIのツール（案）
   - listPosts / listPages：一覧を取得
   - getPage：固定ページの内容を取得
-  - createDraftPost：お知らせを下書きで作成
+  - createDraftPost：お知らせを下書きで作成（承認ボタン「下書きを作る／いいえ」）
+  - publishPost：下書きのお知らせを公開（承認ボタン「公開する／いいえ」。下書きであること・タイトル一致を確認してから公開）
   - proposePageEdit：固定ページの修正案を作る（この時点ではWordPressは変更しない）
   - 実際の更新は、利用者が画面の「反映する」ボタンを押したときにサーバーが行う
 - 使いすぎ防止のため、会話件数・文字数・返答の長さに上限を設ける
@@ -103,7 +104,23 @@
 
 - [x] 1. 練習用WordPressの準備と、REST APIの動作確認
 - [x] 2. WordPressアダプター
-- [ ] 3. チャット画面とお知らせの下書き作成
-- [ ] 4. 固定ページの修正（プレビュー・承認）
+- [x] 3. チャット画面とお知らせの下書き作成
+  - [x] 3-1. パッケージ（ai v7 / @ai-sdk/anthropic / @ai-sdk/react / zod）とAPIキー（.env.local）
+  - [x] 3-2. AIのツール（src/lib/ai/tools.ts）とチャットAPI（src/app/api/chat/route.ts）※curlで動作確認済み
+  - [x] 3-3a. 画面の土台（layout.tsx：フォント・lang="ja"、globals.css：色の変数）
+  - [x] 3-3b. チャット画面本体（src/components/Chat.tsx / Chat.module.css / page.tsx / page.module.css）
+  - [x] 3-4. 画面から「お知らせの下書き作成」を試す
+  - [x] 3-5. 承認ボタン（AI SDKのツール実行の承認）と、下書き → 公開の2段階
+- [ ] 4. 固定ページの修正（プレビュー・承認）← 次回はここから
 - [ ] 5. 音声入力
 - [ ] 6. 公開・README
+
+### 次回の作業メモ（2026-10-30時点）
+
+- ステップ4（固定ページの修正：修正案 → プレビュー → 承認 → 反映）から始める
+  - ステップ3で作った「ツール実行の承認」の仕組みが使えそう（CLAUDE.mdの案の proposePageEdit ＋「反映する」ボタンとどう合わせるか、最初に相談する）
+- 開発サーバーは、VS Codeの新しいターミナル（右上の「＋」）で npm run dev を実行して起動する
+- AI SDK v7の書き方（1作目のv5から変更あり）：system → instructions、stepCountIs → isStepCount、返し方は createUIMessageStreamResponse({ stream: toUIMessageStream({ stream: result.stream }) })。詳しくは node_modules/ai/docs を確認する
+- 承認の書き方（v7）：サーバーは streamText の toolApproval: { ツール名: "user-approval" }。画面は part.state === "approval-requested" でボタンを出し、addToolApprovalResponse({ id: part.approval.id, approved })。useChat に sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses を付けると自動で会話が続く
+- 公開（Vercel）前にやること：experimental_toolApprovalSecret を設定する（ブラウザから承認を偽装されないように、サーバーが署名で確かめる）
+- 練習用WordPress：http://iudake-demo.local（Localで起動しておく）。「会社概要」は固定ページ id=9
