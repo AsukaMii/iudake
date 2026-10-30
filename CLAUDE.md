@@ -55,6 +55,10 @@
   - publishPost：下書きのお知らせを公開（承認ボタン「公開する／いいえ」。下書きであること・タイトル一致を確認してから公開）
   - proposePageEdit：固定ページの修正案を作る（この時点ではWordPressは変更しない）
   - 実際の更新は、利用者が画面の「反映する」ボタンを押したときにサーバーが行う
+  - getPost / editPost：お知らせ（投稿）の本文取得と修正（editPage と同じ差し替え方式＋承認ボタン）
+  - editPage / editPost は newTitle でタイトルも変えられる。修正は頼まれた部分だけ（曜日など頼まれていない所は、合っていなくても変えない・指摘しない。気づいて直すのは利用者）
+  - getWeekday：曜日を調べる（利用者に聞かれたときだけ。AIは曜日の計算をよく間違えるため）
+  - AIには毎回、今日の日付（日本時間）を instructions で渡している
   - ※ 実装では proposePageEdit の代わりに editPage（差し替え方式：変更前・変更後の文字の組み合わせを渡す）＋ 承認ボタン「反映する／いいえ」にした。変更前の文字がちょうど1か所あること・HTMLタグを含まないこと・タイトル一致をサーバーで確認してから更新する
 - 使いすぎ防止のため、会話件数・文字数・返答の長さに上限を設ける
 
@@ -124,18 +128,22 @@
   - [x] 6-4. 公開用WordPress（エックスサーバー：https://iudake-demo.asuka-lab.com）につなぐ
   - [x] 6-5. Vercelに公開（https://iudake.vercel.app/）、スマホでの音声入力の確認
   - [x] 6-6. README（日本語。画面写真はあとで追加）
+- [x] 7. 追加
+  - [x] 7-1. ひまわり工務店のトップページ（固定ページ id=24、テンプレート「タイトルなし」、ホームに設定。投稿ページは「お知らせ」id=22）
+  - [x] 7-2. お知らせの修正（getPost / editPost）、タイトルの変更（newTitle）、getWeekday、今日の日付を渡す
 
 ### 次回の作業メモ（2026-10-30時点）
 
 - MVP（ステップ1〜6）は完成。公開URL：https://iudake.vercel.app/（合言葉が必要）
 - やり残し・アイデア
-  - READMEに画面写真を足す（チャット画面、承認ボタン、変更前 → 変更後のプレビュー）
+  - READMEに画面写真を足す（chat.png / approval-post.png / approval-page.png / demo-site.png を docs/images/ に置く）← 次はここ
+  - ひまわり工務店のヘッダーのメニュー順・フッターの見本リンクを、管理者がサイトエディターで直す
   - ポートフォリオに、デモURLと公開用の合言葉を載せる
   - 公開の取り消し（公開 → 下書きに戻す）ツール
   - デモ用WordPressの内容を、ときどき元に戻す方法
   - 将来：Supabase（ログイン、複数サイト、変更履歴の保存）
 - 公開用WordPress（エックスサーバー）
-  - https://iudake-demo.asuka-lab.com（「ひまわり工務店（デモ）」、CloudSecure WP Security 有効）。「会社概要」は固定ページ id=8
+  - https://iudake-demo.asuka-lab.com（「ひまわり工務店（デモ）」、テーマ Twenty Twenty-Five、CloudSecure WP Security 有効）。「会社概要」は固定ページ id=8、トップページは id=24
   - 接続ユーザー：iudake-bot（編集者）のアプリケーションパスワード
   - つながらなかった原因：サーバーが Authorization ヘッダーを捨てていた → .htaccess の先頭に SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1 を足して解決。あわせて「WordPressセキュリティ設定」の REST API アクセス制限（国外）を OFF にした
   - WordPressアドレス（設定 → 一般）が http:// のままの可能性あり。管理者で確認する

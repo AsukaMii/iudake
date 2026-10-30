@@ -100,7 +100,19 @@ export async function listPages(): Promise<WpItemSummary[]> {
 // 1件の取得・作成・更新
 // ------------------------------------------------------------
 
-// 固定ページ1件の形（一覧の項目に、本文を足したもの）
+// 扱う種類（REST APIのURLの名前）："posts"（お知らせ）または "pages"（固定ページ）
+type WpContentType = "posts" | "pages";
+
+// エラーメッセージで使う、種類の呼び方
+const TYPE_LABELS: Record<WpContentType, string> = {
+  posts: "お知らせ",
+  pages: "ページ",
+};
+
+// 1件分の取得・更新で受け取る項目
+const DETAIL_FIELDS = "context=edit&_fields=id,title,status,date,modified,link,content";
+
+// 固定ページ・お知らせ1件の形（一覧の項目に、本文を足したもの）
 export type WpPageDetail = WpItemSummary & {
   content: string; // ブロック形式の本文（<!-- wp:paragraph --> などを含む）
 };
@@ -110,15 +122,21 @@ type WpRawDetail = WpRawItem & {
   content: { raw: string };
 };
 
+// 1件を取得する（お知らせ・固定ページ共通）
+// context=edit で、本文を元の形（raw）のまま受け取る
+async function getItem(type: WpContentType, id: number): Promise<WpPageDetail> {
+  const item = await wpFetch<WpRawDetail>(`/wp/v2/${type}/${id}?${DETAIL_FIELDS}`);
+  return { ...toSummary(item), content: item.content.raw };
+}
+
 // 固定ページ1件を取得する
 export async function getPage(id: number): Promise<WpPageDetail> {
-  const params = new URLSearchParams({
-    context: "edit", // 本文を元の形（raw）のまま受け取る
-    _fields: "id,title,status,date,modified,link,content",
-  }).toString();
+  return getItem("pages", id);
+}
 
-  const item = await wpFetch<WpRawDetail>(`/wp/v2/pages/${id}?${params}`);
-  return { ...toSummary(item), content: item.content.raw };
+// お知らせ（投稿）1件を取得する
+export async function getPost(id: number): Promise<WpPageDetail> {
+  return getItem("posts", id);
 }
 
 // HTMLとして特別な意味を持つ文字を、安全な形に置き換える
@@ -192,31 +210,40 @@ export async function publishDraftPost(input: {
   return toSummary(item);
 }
 
-// 固定ページのタイトル・本文を更新する
+// タイトル・本文を更新する（お知らせ・固定ページ共通）
 // ※ 利用者が「反映する」を押したときだけ、サーバーから呼ぶ
 // ※ 更新前の内容は、WordPressがリビジョンとして自動で残す
-export async function updatePage(input: {
-  id: number;
-  title?: string; // 省略したらタイトルは変えない
-  content: string; // ブロック形式の本文（getPage で取得した形）
-}): Promise<WpPageDetail> {
+async function updateItem(
+  type: WpContentType,
+  input: {
+    id: number;
+    title?: string; // 省略したらタイトルは変えない
+    content: string; // ブロック形式の本文（getItem で取得した形）
+  }
+): Promise<WpPageDetail> {
   // 変えてよいのはタイトルと本文だけ（公開状態やURLは送らない）
   const body: { content: string; title?: string } = { content: input.content };
   if (input.title !== undefined) {
     body.title = input.title;
   }
 
-  const item = await wpFetch<WpRawDetail>(
-    `/wp/v2/pages/${input.id}?context=edit&_fields=id,title,status,date,modified,link,content`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    }
-  );
+  const item = await wpFetch<WpRawDetail>(`/wp/v2/${type}/${input.id}?${DETAIL_FIELDS}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
   return { ...toSummary(item), content: item.content.raw };
 }
 
-// 固定ページの文章の一部を差し替える（1つの差し替え）
+// 固定ページのタイトル・本文を更新する
+export async function updatePage(input: {
+  id: number;
+  title?: string;
+  content: string;
+}): Promise<WpPageDetail> {
+  return updateItem("pages", input);
+}
+
+// 文章の一部を差し替える（1つの差し替え。お知らせ・固定ページ共通）
 export type PageTextEdit = {
   before: string; // 変更前の文字（本文の中にちょうど1か所あること）
   after: string; // 変更後の文字
@@ -227,21 +254,40 @@ function countOccurrences(text: string, search: string): number {
   return text.split(search).length - 1;
 }
 
-// 固定ページの文章を、差し替え方式で修正する
+// 差し替え方式の修正で受け取る内容
+type EditTextInput = {
+  id: number;
+  title: string; // 承認画面で見せた、今のタイトル
+  newTitle?: string; // 新しいタイトル（タイトルを変えないときは省略）
+  edits: PageTextEdit[]; // 本文の差し替え（本文を変えないときは空）
+};
+
+// 文章を、差し替え方式で修正する（お知らせ・固定ページ共通）
 // ※ 利用者が画面で「反映する」を押したときだけ呼ばれる
 // ※ 本文の全文は受け取らず、「この文字をこう変える」だけを受け取る
 //   （ブロックの記号やデザインを壊さないようにするため）
 // ※ 1つでも確認に失敗したら、何も変えずにエラーにする
-export async function editPageText(input: {
-  id: number;
-  title: string; // 承認画面で見せたタイトル
-  edits: PageTextEdit[];
-}): Promise<WpItemSummary> {
-  const page = await getPage(input.id);
+async function editItemText(
+  type: WpContentType,
+  input: EditTextInput
+): Promise<WpItemSummary> {
+  const label = TYPE_LABELS[type];
+
+  // 0. 何か変えるものがあるか
+  if (input.edits.length === 0 && input.newTitle === undefined) {
+    throw new Error("変える内容がありません。");
+  }
+
+  const page = await getItem(type, input.id);
 
   // 1. タイトルが一致するか（違うページを書き換えないように）
   if (page.title !== input.title) {
-    throw new Error("ページのタイトルが一致しないため、修正を中止しました。");
+    throw new Error(`${label}のタイトルが一致しないため、修正を中止しました。`);
+  }
+
+  // 新しいタイトルにも、HTMLタグは入れさせない
+  if (input.newTitle !== undefined && /[<>]/.test(input.newTitle)) {
+    throw new Error("HTMLタグを含む修正はできません。");
   }
 
   let content = page.content;
@@ -253,11 +299,11 @@ export async function editPageText(input: {
     // 3. 変更前の文字が、ちょうど1か所だけあるか
     const count = countOccurrences(content, edit.before);
     if (count === 0) {
-      throw new Error(`「${edit.before}」がページの中に見つかりませんでした。`);
+      throw new Error(`「${edit.before}」が${label}の中に見つかりませんでした。`);
     }
     if (count > 1) {
       throw new Error(
-        `「${edit.before}」がページの中に${count}か所あるため、どこを変えるか決められません。`
+        `「${edit.before}」が${label}の中に${count}か所あるため、どこを変えるか決められません。`
       );
     }
     // 差し替える（replace は $ などの記号を特別扱いするので、split と join を使う）
@@ -265,8 +311,22 @@ export async function editPageText(input: {
   }
 
   // 更新する（変更前の内容は、WordPressがリビジョンとして自動で残す）
-  const updated = await updatePage({ id: input.id, content });
+  const updated = await updateItem(type, {
+    id: input.id,
+    title: input.newTitle,
+    content,
+  });
   // 返すのは本文以外だけにする（AIに長い本文を返さないため）
   const { id, title, status, date, modified, link } = updated;
   return { id, title, status, date, modified, link };
+}
+
+// 固定ページの文章を、差し替え方式で修正する
+export async function editPageText(input: EditTextInput): Promise<WpItemSummary> {
+  return editItemText("pages", input);
+}
+
+// お知らせ（投稿）の文章を、差し替え方式で修正する
+export async function editPostText(input: EditTextInput): Promise<WpItemSummary> {
+  return editItemText("posts", input);
 }

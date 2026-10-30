@@ -7,13 +7,67 @@ import { z } from "zod";
 import {
   createDraftPost,
   editPageText,
+  editPostText,
   getPage,
+  getPost,
   listPages,
   publishDraftPost,
   listPosts,
 } from "@/lib/adapters/wordpress";
 
+// 差し替え方式の修正で受け取る内容（editPage・editPost 共通）
+// what：「固定ページ」「お知らせ」など、説明文に入れる呼び方
+// getTool：今の本文を取得するツールの名前
+function editInputSchema(what: string, getTool: string) {
+  return z.object({
+    id: z.number().int().positive().describe(`修正する${what}のID`),
+    title: z
+      .string()
+      .min(1)
+      .describe(`修正する${what}の今のタイトル（${getTool} の結果と完全に同じ文字）`),
+    newTitle: z
+      .string()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe("新しいタイトル。タイトルを変えるときだけ書く（変えないときは省略）"),
+    edits: z
+      .array(
+        z.object({
+          before: z.string().min(1).max(500).describe("変更前の文字（本文にあるものをそのまま）"),
+          after: z.string().max(500).describe("変更後の文字"),
+        })
+      )
+      .max(10)
+      .describe("本文の差し替えの一覧（10件まで）。本文を変えないときは空の配列"),
+  });
+}
+
+// 曜日の呼び方（Date の getUTCDay() の 0〜6 に合わせる）
+const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+
 export const tools = {
+  // 日付の曜日を調べる
+  // ※ AIは曜日の計算をよく間違えるので、利用者に曜日を聞かれたときはこれで答えさせる
+  getWeekday: tool({
+    description:
+      "日付の曜日を調べる。利用者に曜日を聞かれたときだけ使う。お知らせなどの修正では使わない。",
+    inputSchema: z.object({
+      year: z.number().int().min(2000).max(2100).describe("年（例：2026）"),
+      month: z.number().int().min(1).max(12).describe("月"),
+      day: z.number().int().min(1).max(31).describe("日"),
+    }),
+    execute: async ({ year, month, day }) => {
+      // 時差の影響を受けないように、UTC（世界標準時）で計算する
+      const date = new Date(Date.UTC(year, month - 1, day));
+      // 2月30日のように、存在しない日付ではないか
+      if (date.getUTCMonth() !== month - 1) {
+        throw new Error(`${year}年${month}月${day}日は存在しない日付です。`);
+      }
+      return { date: `${year}年${month}月${day}日`, weekday: WEEKDAYS[date.getUTCDay()] };
+    },
+  }),
+
   // 投稿（お知らせ）の一覧を取得する
   listPosts: tool({
     description:
@@ -40,29 +94,32 @@ export const tools = {
     execute: async ({ id }) => getPage(id),
   }),
 
-  // 固定ページの文章の一部を差し替える
+  // 固定ページのタイトル・文章の一部を差し替える
   // ※ 利用者が画面で承認したときだけ実行される（route.ts の toolApproval で設定）
   editPage: tool({
     description:
-      "固定ページの文章の一部を差し替える。before には getPage で取得した本文の中にある文字を、そのまま1か所だけに当てはまる長さで書く。HTMLタグや <!-- --> の記号は含めないこと。",
+      "固定ページのタイトルや文章の一部を差し替える。before には getPage で取得した本文の中にある文字を、そのまま1か所だけに当てはまる長さで書く。HTMLタグや <!-- --> の記号は含めないこと。",
+    inputSchema: editInputSchema("固定ページ", "getPage"),
+    execute: async (input) => editPageText(input),
+  }),
+
+  // お知らせ（投稿）1件の内容（本文）を取得する
+  getPost: tool({
+    description:
+      "お知らせ（投稿）1件のタイトルと本文を取得する。お知らせを修正する前に、必ずこれで今の本文を確かめること。",
     inputSchema: z.object({
-      id: z.number().int().positive().describe("修正する固定ページのID"),
-      title: z
-        .string()
-        .min(1)
-        .describe("修正する固定ページのタイトル（getPage の結果と完全に同じ文字）"),
-      edits: z
-        .array(
-          z.object({
-            before: z.string().min(1).max(500).describe("変更前の文字（本文にあるものをそのまま）"),
-            after: z.string().max(500).describe("変更後の文字"),
-          })
-        )
-        .min(1)
-        .max(10)
-        .describe("差し替えの一覧（10件まで）"),
+      id: z.number().int().positive().describe("お知らせのID（listPosts で確かめる）"),
     }),
-    execute: async ({ id, title, edits }) => editPageText({ id, title, edits }),
+    execute: async ({ id }) => getPost(id),
+  }),
+
+  // お知らせ（投稿）のタイトル・文章の一部を差し替える
+  // ※ 利用者が画面で承認したときだけ実行される（route.ts の toolApproval で設定）
+  editPost: tool({
+    description:
+      "お知らせ（投稿）のタイトルや文章の一部を差し替える。before には getPost で取得した本文の中にある文字を、そのまま1か所だけに当てはまる長さで書く。HTMLタグや <!-- --> の記号は含めないこと。",
+    inputSchema: editInputSchema("お知らせ", "getPost"),
+    execute: async (input) => editPostText(input),
   }),
 
   // お知らせを下書きで作成する

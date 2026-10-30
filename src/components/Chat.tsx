@@ -49,6 +49,24 @@ const TOOL_LABELS: Record<string, { running: string; done: string }> = {
     running: "ページを修正しています…",
     done: "ページの修正をサイトに反映しました",
   },
+  getPost: {
+    running: "お知らせの内容を確認しています…",
+    done: "お知らせの内容を確認しました",
+  },
+  editPost: {
+    running: "お知らせを修正しています…",
+    done: "お知らせの修正をサイトに反映しました",
+  },
+  getWeekday: {
+    running: "曜日を調べています…",
+    done: "曜日を確かめました",
+  },
+};
+
+// 修正の承認画面で使う、種類の呼び方
+const EDIT_TARGET_LABELS: Record<string, string> = {
+  editPage: "ページ",
+  editPost: "お知らせ",
 };
 
 // 承認で「いいえ」を選んだときに表示する説明
@@ -56,6 +74,7 @@ const DENIED_LABELS: Record<string, string> = {
   createDraftPost: "作成をやめました",
   publishPost: "公開しませんでした（下書きのまま残っています）",
   editPage: "修正しませんでした（ページは変わっていません）",
+  editPost: "修正しませんでした（お知らせは変わっていません）",
 };
 
 // エラーの文面を取り出す
@@ -79,10 +98,11 @@ type DraftPostInput = { title: string; content: string };
 // publishPost に渡される内容（投稿IDとタイトル）
 type PublishPostInput = { id: number; title: string };
 
-// editPage に渡される内容（ページID・タイトル・差し替えの一覧）
+// editPage・editPost に渡される内容（ID・今のタイトル・新しいタイトル・差し替えの一覧）
 type EditPageInput = {
   id: number;
   title: string;
+  newTitle?: string; // タイトルを変えるときだけ入っている
   edits: { before: string; after: string }[];
 };
 
@@ -195,17 +215,33 @@ function MessageParts({
             );
           }
 
-          // ページ修正の承認待ち：変更前・変更後のプレビューと「反映する／いいえ」ボタンを出す
-          if (part.state === "approval-requested" && name === "editPage") {
+          // ページ・お知らせ修正の承認待ち：変更前・変更後のプレビューと「反映する／いいえ」ボタンを出す
+          if (part.state === "approval-requested" && name in EDIT_TARGET_LABELS) {
             const input = part.input as EditPageInput;
             return (
               <div key={index} className={styles.approval}>
                 <p className={styles.approvalTitle}>
-                  「{input.title}」のページを、次のように修正しますか？
+                  「{input.title}」の{EDIT_TARGET_LABELS[name]}を、次のように修正しますか？
                 </p>
                 <ul className={styles.diffList}>
+                  {/* タイトルを変えるとき */}
+                  {input.newTitle !== undefined && (
+                    <li className={styles.diff}>
+                      <p className={styles.diffTarget}>タイトル</p>
+                      <p className={styles.diffBefore}>
+                        <span className={styles.diffLabel}>変更前</span>
+                        <del>{input.title}</del>
+                      </p>
+                      <p className={styles.diffAfter}>
+                        <span className={styles.diffLabel}>変更後</span>
+                        <ins>{input.newTitle}</ins>
+                      </p>
+                    </li>
+                  )}
+                  {/* 本文の差し替え */}
                   {input.edits.map((edit, i) => (
                     <li key={i} className={styles.diff}>
+                      <p className={styles.diffTarget}>本文</p>
                       <p className={styles.diffBefore}>
                         <span className={styles.diffLabel}>変更前</span>
                         <del>{edit.before}</del>
@@ -256,7 +292,7 @@ function MessageParts({
           // 公開・修正できたとき：公開ページへのリンクも出す
           if (
             part.state === "output-available" &&
-            (name === "publishPost" || name === "editPage")
+            (name === "publishPost" || name === "editPage" || name === "editPost")
           ) {
             const output = part.output as PublishPostOutput;
             return (

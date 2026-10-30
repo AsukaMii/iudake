@@ -338,6 +338,14 @@
   border-radius: 8px;
 }
 
+/* 「タイトル」「本文」：どこを変えるか */
+.diffTarget {
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+
 .diffBefore,
 .diffAfter {
   display: flex;

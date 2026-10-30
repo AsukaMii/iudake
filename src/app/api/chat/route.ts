@@ -28,10 +28,13 @@ const INSTRUCTIONS = `あなたは「イウダケ」のアシスタントです�
 - お知らせ（投稿）・固定ページの一覧を見せる（listPosts / listPages）
 - お知らせを「下書き」として作成する（createDraftPost）
 - 下書きのお知らせを公開する（publishPost）
-- 固定ページの文章の一部を修正する（getPage / editPage）
+- 固定ページのタイトル・文章の一部を修正する（getPage / editPage）
+- お知らせのタイトル・文章の一部を修正する（getPost / editPost）
 
 ## ルール
 - やさしい日本語で、短く答える。専門用語はできるだけ使わない
+- 画面は記号をそのまま表示するので、**（太字）や # などのマークダウンの記号は使わない。箇条書きの「- 」は使ってよい
+- お知らせや固定ページの中身を聞かれたら、getPost / getPage で本文を読んでから答える
 - お知らせを作るときは、まず内容を聞き取る。タイトルと本文の案ができたら、文章で確認せずに createDraftPost を呼ぶ（画面に「下書きを作る／いいえ」のボタンが出て、利用者が承認したときだけ作成される）
 - 下書き作成で利用者が「いいえ」を選んだら、どこを直したいかをたずねる
 - 下書きを作ったら、文章で確認せずに続けて publishPost を呼ぶ。id と title は createDraftPost の結果をそのまま使う（画面に「公開する／いいえ」のボタンが出て、利用者が承認したときだけ公開される）
@@ -39,7 +42,10 @@ const INSTRUCTIONS = `あなたは「イウダケ」のアシスタントです�
 - 公開で利用者が「いいえ」を選んだら、「下書きのまま残しました。あとで『○○を公開して』と言えば公開できます」と伝える
 - 一覧にある下書きの公開を頼まれたときは、listPosts で id と title を確かめてから publishPost を呼ぶ。公開済みのものには使わない
 - 固定ページの修正を頼まれたら、listPages でページを探し、getPage で今の本文を確かめてから、文章で確認せずに editPage を呼ぶ（画面に変更前・変更後のプレビューと「反映する／いいえ」のボタンが出て、利用者が承認したときだけ反映される）
-- editPage の before は、本文にある文字をそのまま使い、1か所だけに当てはまるように前後の言葉も少し含める。HTMLタグや <!-- --> の記号は含めない。頼まれていない所は変えない
+- お知らせの修正を頼まれたら、listPosts でお知らせを探し、getPost で今の本文を確かめてから、文章で確認せずに editPost を呼ぶ（固定ページと同じく、承認したときだけ反映される）
+- editPage / editPost の before は、本文にある文字をそのまま使い、1か所だけに当てはまるように前後の言葉も少し含める。HTMLタグや <!-- --> の記号は含めない。頼まれていない所は変えない
+- タイトルに変えたい部分が含まれているときは newTitle で新しいタイトルを渡す。本文にも同じ内容があれば、edits でまとめて直す
+- 修正では、頼まれた部分だけを変える。曜日など頼まれていない部分は、合っていないように見えても、変えたり指摘したりしない（気づいて直すのは利用者）
 - 修正で利用者が「いいえ」を選んだら、どこを直したいかをたずねる
 - 修正できたら「サイトに反映しました」と短く伝える
 - 削除・公開の取り消し・ページの新規作成・デザインの変更など、上のツールでできないことは引き受けず、できないと伝える
@@ -96,9 +102,22 @@ export async function POST(req: Request) {
     );
   }
 
+  // 今日の日付（日本時間）をAIに教える
+  // ※ AIは今日が何年何月何日かを知らないので、「11月23日」が何年のことか分からなくなるため
+  const today = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  }).format(new Date());
+
   const result = streamText({
     model: anthropic("claude-haiku-5-5"),
-    instructions: INSTRUCTIONS,
+    instructions: `${INSTRUCTIONS}
+
+## 今日の日付
+今日は${today}（日本時間）です。年が書かれていない日付は、今日より後のいちばん近い日付として考える。`,
     messages: await convertToModelMessages(messages),
     tools,
     // 承認が必要なツール：AIが呼んでも一度止まり、利用者が画面で「はい」を押したときだけ実行される
@@ -106,6 +125,7 @@ export async function POST(req: Request) {
       createDraftPost: "user-approval",
       publishPost: "user-approval",
       editPage: "user-approval",
+      editPost: "user-approval",
     },
     // 承認ボタンを出すときに署名し、押されて戻ってきたときに確かめる
     // （ツール名・呼び出しID・入力内容が書き換えられていたら、実行せずに断る）
