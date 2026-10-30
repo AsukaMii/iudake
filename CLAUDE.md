@@ -116,14 +116,17 @@
   - [x] 4-1. editPageText（wordpress.ts）、getPage / editPage ツール、承認の設定
   - [x] 4-2. 変更前 → 変更後のプレビューと「反映する／いいえ」ボタン
   - [x] 4-3. 画面から試す（反映・いいえ・リビジョンでの確認）
-- [ ] 5. 音声入力 ← 次回はここから
-- [ ] 6. 公開・README
+- [x] 5. 音声入力（src/components/VoiceInputButton.tsx。聞き取った文字は入力欄に入れ、送信は利用者が押す）
+- [ ] 6. 公開・README ← 次回はここから
 
 ### 次回の作業メモ（2026-10-30時点）
 
-- ステップ5（音声入力ボタン：Web Speech API）から始める
-  - Chat.tsx の入力欄の横にマイクボタンを置く想定。聞き取った文字は入力欄に入れ、送信は利用者が押す形にするか最初に相談する
-  - 対応していないブラウザ（Firefoxなど）ではボタンを出さない／説明を出す
+- ステップ6（デモの明記・README・公開）から始める。最初に相談すること：
+  - Vercelからは、Mac内のLocalのWordPressにつながらない。公開用のWordPressをどう用意するか
+  - 誰でも使えるとWordPressを書き換えられ、APIの料金もかかる。合言葉・回数制限などの対策
+  - experimental_toolApprovalSecret の設定
+- スマホでの音声入力の確認は、公開（https）後に行う
+- READMEに書くこと：Chromeの音声認識では、声がGoogleのサーバーに送られて文字になる
 - 開発サーバーは、VS Codeの新しいターミナル（右上の「＋」）で npm run dev を実行して起動する
 - AI SDK v7の書き方（1作目のv5から変更あり）：system → instructions、stepCountIs → isStepCount、返し方は createUIMessageStreamResponse({ stream: toUIMessageStream({ stream: result.stream }) })。詳しくは node_modules/ai/docs を確認する
 - 承認の書き方（v7）：サーバーは streamText の toolApproval: { ツール名: "user-approval" }。画面は part.state === "approval-requested" でボタンを出し、addToolApprovalResponse({ id: part.approval.id, approved })。useChat に sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses を付けると自動で会話が続く

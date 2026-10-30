@@ -11,6 +11,7 @@ import {
 } from "ai";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import styles from "./Chat.module.css";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 // サーバー側（route.ts）と同じ上限。送る前に画面でも知らせる
 const MAX_INPUT_CHARS = 500;
@@ -304,6 +305,9 @@ export function Chat() {
     });
   const [input, setInput] = useState("");
 
+  // 音声入力を始めたときに、入力欄にすでにあった文字（聞き取った文字はこの続きに足す）
+  const voiceBaseRef = useRef("");
+
   // 新しいメッセージが来たら、いちばん下まで自動でスクロールする
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -412,6 +416,14 @@ export function Chat() {
           aria-invalid={tooLong}
         />
         <div className={styles.formFooter}>
+          {/* 音声入力：聞き取った文字は入力欄に入るだけで、送信は利用者が押す */}
+          <VoiceInputButton
+            onStart={() => {
+              voiceBaseRef.current = input;
+            }}
+            onTranscript={(text) => setInput(voiceBaseRef.current + text)}
+            disabled={isBusy}
+          />
           <p
             id="chat-input-help"
             className={`${styles.count} ${tooLong ? styles.countOver : ""}`}
