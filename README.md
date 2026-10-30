@@ -1,36 +1,103 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# イウダケ — 言うだけで、サイト更新
 
-## Getting Started
+パソコンやWordPressの操作が苦手な人でも、「お知らせを追加して」「会社概要の電話番号を変えて」と **話しかけたり入力したりするだけで** WordPressサイトを更新できるアシスタントです。
 
-First, run the development server:
+> **これはポートフォリオ用のデモです。**
+> デモサイト：https://iudake.vercel.app/ （合言葉が必要です。合言葉はポートフォリオに記載しています）
+> つながっているWordPressは、架空の会社「ひまわり工務店（デモ）」のサイトです。
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+<!-- 画面写真：あとで追加する（チャット画面、承認ボタン、変更前→変更後のプレビュー） -->
+
+## できること
+
+| 頼み方の例 | イウダケがすること |
+|---|---|
+| 「お知らせの一覧を見せて」 | 投稿・固定ページの一覧を見せる |
+| 「年末年始の休業のお知らせを追加したい」 | 内容を聞き取り、タイトルと本文の案を作る → **「下書きを作る」** → **「公開する」** |
+| 「会社概要の電話番号を 03-0000-5678 に変えて」 | 変更前 → 変更後のプレビューを見せる → **「反映する」** でサイトに反映 |
+
+- 入力は、チャットと **音声入力ボタン**（スマホでも使えます）
+- 大きな文字とボタンで、迷わず使えるようにしています
+
+## 安全のしくみ
+
+AIにサイトを直接触らせず、**利用者が確かめて、ボタンを押したときだけ** 変更されるようにしています。
+
+- **承認ボタン**：AIが変更しようとすると一度止まり、内容を画面で見せて「下書きを作る／公開する／反映する」か「いいえ」を選んでもらう。ボタンを押さない限り、サーバーは実行しない
+- **承認の署名**：承認ボタンに署名を付け、ブラウザ側で偽造・改ざんされた承認は実行前に断る
+- **お知らせは、まず下書き**：いきなり公開せず、下書き → 公開の2段階にする
+- **固定ページは差し替え方式**：AIは本文を丸ごと書き直さず、「この文字をこう変える」だけを渡す。サーバーで「変更前の文字がちょうど1か所あるか」「HTMLタグを含まないか」「ページのタイトルが一致するか」を確かめてから更新するので、デザインやブロックを壊さない
+- **元に戻せる**：固定ページの変更前の内容は、WordPressのリビジョンに残る
+- **AIができることを限定**：AIが使えるのは、決められたツール（一覧・取得・下書き作成・公開・ページ修正）だけ。削除やデザインの変更はできない
+- **WordPressの権限を最小限に**：接続には「編集者」権限のユーザーのアプリケーションパスワードを使う（テーマ・プラグイン・設定は変えられない）
+- **秘密情報はサーバーだけ**：アプリケーションパスワードやAPIキーはブラウザに出さない
+- **使いすぎ防止**：合言葉による入場チェックと、会話の件数・文字数・返答の長さの上限
+
+## 設計
+
+「本体」と「アダプター」に分けています。今はWordPress用のアダプターだけですが、ほかのサイトの種類（Next.js、Shopify など）にも広げられる形にしています。
+
+```
+ブラウザ（チャット・音声入力・承認ボタン）
+   │
+   ▼
+Next.js（Vercel）
+   ├─ 本体：/api/chat … AI（Claude）とツール呼び出し、承認、上限チェック
+   └─ アダプター：src/lib/adapters/wordpress.ts … WordPress REST API の読み書き
+   │
+   ▼
+WordPress（REST API ＋ アプリケーションパスワード。プラグインは不要）
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| 場所 | 役割 |
+|---|---|
+| `src/components/Chat.tsx` | チャット画面、承認ボタン、変更前 → 変更後のプレビュー |
+| `src/components/VoiceInputButton.tsx` | 音声入力ボタン（Web Speech API） |
+| `src/components/PasscodeForm.tsx` | 合言葉の入力画面 |
+| `src/app/api/chat/route.ts` | AIとのやり取り、承認の設定、上限チェック |
+| `src/app/api/auth/route.ts` | 合言葉の確認 |
+| `src/lib/ai/tools.ts` | AIが使えるツールの一覧 |
+| `src/lib/adapters/wordpress.ts` | WordPressとのやり取り |
+| `src/lib/auth.ts` | 合言葉のチェック（HMACの印を cookie に入れる） |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 使った技術
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Next.js（App Router、Cache Components）／ TypeScript ／ CSS Modules
+- Vercel AI SDK（`ai` v7、`@ai-sdk/react`、`@ai-sdk/anthropic`）＋ Claude API
+- Zod（入力チェック）
+- WordPress REST API ＋ アプリケーションパスワード
+- Web Speech API（ブラウザの音声認識）
+- Vercel（公開）
 
-## Learn More
+## 注意
 
-To learn more about Next.js, take a look at the following resources:
+- **これはデモです。** 実際のサービスとして使うには、ログイン、複数サイトへの対応、変更履歴の保存などが必要です
+- **音声入力について**：ブラウザの音声認識を使っています。Chromeでは、話した声がGoogleのサーバーに送られて文字になります。Firefoxでは音声入力ボタンは表示されません
+- デモ用WordPressの内容は、見に来た方の操作で変わることがあります
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 自分の環境で動かす
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm install
+npm run dev
+```
 
-## Deploy on Vercel
+`.env.local` に次の項目を書きます（値は自分の環境のものを入れる。Gitにはコミットしない）。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| 名前 | 内容 |
+|---|---|
+| `WP_BASE_URL` | WordPressのURL（`https://〜`、最後に `/` を付けない） |
+| `WP_USERNAME` | WordPressのユーザー名（編集者権限がおすすめ） |
+| `WP_APP_PASSWORD` | そのユーザーのアプリケーションパスワード（スペースを含むので `"` で囲む） |
+| `ANTHROPIC_API_KEY` | Claude APIのキー |
+| `DEMO_PASSCODE` | 合言葉 |
+| `TOOL_APPROVAL_SECRET` | 承認の署名に使う文字列（`openssl rand -base64 32` で作る） |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+WordPress側の準備：
+- サイトを https で使えるようにする（アプリケーションパスワードに必要）
+- 「ユーザー」→「プロフィール」→「アプリケーションパスワード」で発行する
+- レンタルサーバーによっては、海外からのREST APIの制限をOFFにしたり、`.htaccess` に Authorization ヘッダーを渡す設定を足したりする必要があります
+
+## 作った人
+
+Asuka（個人でWeb制作）— GitHub：[AsukaMii](https://github.com/AsukaMii)

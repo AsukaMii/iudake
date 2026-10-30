@@ -117,24 +117,30 @@
   - [x] 4-2. 変更前 → 変更後のプレビューと「反映する／いいえ」ボタン
   - [x] 4-3. 画面から試す（反映・いいえ・リビジョンでの確認）
 - [x] 5. 音声入力（src/components/VoiceInputButton.tsx。聞き取った文字は入力欄に入れ、送信は利用者が押す）
-- [ ] 6. 公開・README ← 次回はここから
+- [x] 6. 公開・README
   - [x] 6-1. 合言葉の仕組み（src/lib/auth.ts、src/app/api/auth/route.ts、chat/route.ts でチェック。.env.local の DEMO_PASSCODE）
   - [x] 6-2. 合言葉の入力画面（src/components/PasscodeForm.tsx、page.tsx で出し分け）
   - [x] 6-3. 承認の署名（experimental_toolApprovalSecret。.env.local の TOOL_APPROVAL_SECRET。未設定ならエラーで止める）
-  - [ ] 6-4. 公開用WordPress（エックスサーバー：https://iudake-demo.asuka-lab.com）につなぐ
-  - [ ] 6-5. Vercelに公開（環境変数の設定）、スマホでの音声入力の確認
-  - [ ] 6-6. README
+  - [x] 6-4. 公開用WordPress（エックスサーバー：https://iudake-demo.asuka-lab.com）につなぐ
+  - [x] 6-5. Vercelに公開（https://iudake.vercel.app/）、スマホでの音声入力の確認
+  - [x] 6-6. README（日本語。画面写真はあとで追加）
 
 ### 次回の作業メモ（2026-10-30時点）
 
-- 6-4 から始める。公開用WordPressの状況（2026-10-30時点）：
-  - エックスサーバーにインストール済み（サイト名「ひまわり工務店（デモ）」、CloudSecure WP Security 有効）。サーバー設定の反映待ちで「無効なURLです」と表示されていた
-  - 開けるようになったら：設定 → 一般 で2つのURLを https:// に直す／REST API アクセス制限（WordPressセキュリティ設定）を OFF／検索エンジンにインデックスさせない／会社概要とお知らせを用意／編集者の iudake-bot を作り、アプリケーションパスワードを発行
-  - つながらないときは、CloudSecure WP Security の設定も確認する
-- スマホでの音声入力の確認は、公開（https）後に行う
-- READMEに書くこと：Chromeの音声認識では、声がGoogleのサーバーに送られて文字になる
+- MVP（ステップ1〜6）は完成。公開URL：https://iudake.vercel.app/（合言葉が必要）
+- やり残し・アイデア
+  - READMEに画面写真を足す（チャット画面、承認ボタン、変更前 → 変更後のプレビュー）
+  - ポートフォリオに、デモURLと公開用の合言葉を載せる
+  - 公開の取り消し（公開 → 下書きに戻す）ツール
+  - デモ用WordPressの内容を、ときどき元に戻す方法
+  - 将来：Supabase（ログイン、複数サイト、変更履歴の保存）
+- 公開用WordPress（エックスサーバー）
+  - https://iudake-demo.asuka-lab.com（「ひまわり工務店（デモ）」、CloudSecure WP Security 有効）。「会社概要」は固定ページ id=8
+  - 接続ユーザー：iudake-bot（編集者）のアプリケーションパスワード
+  - つながらなかった原因：サーバーが Authorization ヘッダーを捨てていた → .htaccess の先頭に SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1 を足して解決。あわせて「WordPressセキュリティ設定」の REST API アクセス制限（国外）を OFF にした
+  - WordPressアドレス（設定 → 一般）が http:// のままの可能性あり。管理者で確認する
+- 環境変数：.env.local（ローカル）と Vercel の Settings → Environment Variables（公開用。DEMO_PASSCODE・TOOL_APPROVAL_SECRET はローカルと別の値）。Vercel側を変えたら Redeploy が必要
 - 開発サーバーは、VS Codeの新しいターミナル（右上の「＋」）で npm run dev を実行して起動する
 - AI SDK v7の書き方（1作目のv5から変更あり）：system → instructions、stepCountIs → isStepCount、返し方は createUIMessageStreamResponse({ stream: toUIMessageStream({ stream: result.stream }) })。詳しくは node_modules/ai/docs を確認する
-- 承認の書き方（v7）：サーバーは streamText の toolApproval: { ツール名: "user-approval" }。画面は part.state === "approval-requested" でボタンを出し、addToolApprovalResponse({ id: part.approval.id, approved })。useChat に sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses を付けると自動で会話が続く
-- 公開（Vercel）前にやること：experimental_toolApprovalSecret を設定する（ブラウザから承認を偽装されないように、サーバーが署名で確かめる）
-- 練習用WordPress：http://iudake-demo.local（Localで起動しておく）。「会社概要」は固定ページ id=9
+- 承認の書き方（v7）：サーバーは streamText の toolApproval: { ツール名: "user-approval" } と experimental_toolApprovalSecret。画面は part.state === "approval-requested" でボタンを出し、addToolApprovalResponse({ id: part.approval.id, approved })。useChat に sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses
+- 練習用WordPress（Local）：http://iudake-demo.local。「会社概要」は固定ページ id=9。.env.local の値は # を付けて切り替える
