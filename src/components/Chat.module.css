@@ -199,6 +199,22 @@
   border-color: var(--color-primary-dark);
 }
 
+/* 「ゴミ箱に入れる」：赤にして、取り返しに注意が必要な操作だと伝える */
+.danger {
+  min-height: 52px;
+  padding: 0 24px;
+  background: var(--color-error);
+  border: 2px solid var(--color-error);
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.danger:hover {
+  filter: brightness(0.9);
+}
+
 /* 「いいえ」：白地に枠線で控えめに */
 .deny {
   background: var(--background);

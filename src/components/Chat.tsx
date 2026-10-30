@@ -61,6 +61,20 @@ const TOOL_LABELS: Record<string, { running: string; done: string }> = {
     running: "曜日を調べています…",
     done: "曜日を確かめました",
   },
+  unpublishContent: {
+    running: "非公開にしています…",
+    done: "非公開にしました（下書きに戻りました）",
+  },
+  trashContent: {
+    running: "ゴミ箱に入れています…",
+    done: "ゴミ箱に入れました（WordPressの管理画面から元に戻せます）",
+  },
+};
+
+// 非公開・ゴミ箱の承認画面で使う、種類の呼び方
+const KIND_LABELS: Record<string, string> = {
+  post: "お知らせ",
+  page: "ページ",
 };
 
 // 修正の承認画面で使う、種類の呼び方
@@ -75,6 +89,8 @@ const DENIED_LABELS: Record<string, string> = {
   publishPost: "公開しませんでした（下書きのまま残っています）",
   editPage: "修正しませんでした（ページは変わっていません）",
   editPost: "修正しませんでした（お知らせは変わっていません）",
+  unpublishContent: "非公開にしませんでした（公開のままです）",
+  trashContent: "ゴミ箱に入れませんでした（そのまま残っています）",
 };
 
 // エラーの文面を取り出す
@@ -105,6 +121,9 @@ type EditPageInput = {
   newTitle?: string; // タイトルを変えるときだけ入っている
   edits: { before: string; after: string }[];
 };
+
+// unpublishContent・trashContent に渡される内容（種類・ID・タイトル）
+type ChangeStatusInput = { kind: "post" | "page"; id: number; title: string };
 
 // publishPost・editPage の結果のうち、画面で使うもの（公開ページのURL）
 type PublishPostOutput = { link: string };
@@ -265,6 +284,52 @@ function MessageParts({
                     }
                   >
                     反映する
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.deny}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: false })
+                    }
+                  >
+                    いいえ
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // 非公開・ゴミ箱の承認待ち：タイトルと注意書き、ボタンを出す
+          if (
+            part.state === "approval-requested" &&
+            (name === "unpublishContent" || name === "trashContent")
+          ) {
+            const input = part.input as ChangeStatusInput;
+            const isTrash = name === "trashContent";
+            const kindLabel = KIND_LABELS[input.kind] ?? "ページ";
+            return (
+              <div key={index} className={styles.approval}>
+                <p className={styles.approvalTitle}>
+                  この{kindLabel}を、{isTrash ? "ゴミ箱に入れますか？" : "非公開にしますか？"}
+                </p>
+                <dl className={styles.preview}>
+                  <dt>タイトル</dt>
+                  <dd>{input.title}</dd>
+                </dl>
+                <p className={styles.approvalNote}>
+                  {isTrash
+                    ? "※ サイトから消えます。完全には削除されず、WordPressの管理画面の「ゴミ箱」から元に戻せます（30日たつと自動で削除されます）。"
+                    : "※ サイトから見えなくなり、下書きに戻ります。あとで「公開して」と頼めば、また公開できます。"}
+                </p>
+                <div className={styles.approvalButtons}>
+                  <button
+                    type="button"
+                    className={isTrash ? styles.danger : styles.approve}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: true })
+                    }
+                  >
+                    {isTrash ? "ゴミ箱に入れる" : "非公開にする"}
                   </button>
                   <button
                     type="button"

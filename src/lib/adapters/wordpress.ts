@@ -330,3 +330,79 @@ export async function editPageText(input: EditTextInput): Promise<WpItemSummary>
 export async function editPostText(input: EditTextInput): Promise<WpItemSummary> {
   return editItemText("posts", input);
 }
+
+// ------------------------------------------------------------
+// 非公開にする・ゴミ箱に入れる
+// ------------------------------------------------------------
+
+// 非公開・ゴミ箱で受け取る内容
+// kind："post"（お知らせ）または "page"（固定ページ）
+type ChangeStatusInput = {
+  kind: "post" | "page";
+  id: number;
+  title: string; // 承認画面で見せたタイトル
+};
+
+// kind を REST APIのURLの名前に変える
+function toContentType(kind: ChangeStatusInput["kind"]): WpContentType {
+  return kind === "post" ? "posts" : "pages";
+}
+
+// サイトのトップページかどうか（ページのURLが、サイトのURLと同じなら トップページ）
+function isFrontPage(item: WpItemSummary): boolean {
+  const { baseUrl } = getConfig();
+  const normalize = (url: string) => url.replace(/\/+$/, "");
+  return normalize(item.link) === normalize(baseUrl);
+}
+
+// 非公開・ゴミ箱の前に、共通で確かめること
+// 1. タイトルが一致するか（違うものを消さないように）
+// 2. トップページではないか（サイトの入り口が表示されなくなるので、イウダケからは触らせない）
+async function getItemForStatusChange(input: ChangeStatusInput): Promise<WpPageDetail> {
+  const type = toContentType(input.kind);
+  const label = TYPE_LABELS[type];
+  const item = await getItem(type, input.id);
+
+  if (item.title !== input.title) {
+    throw new Error(`${label}のタイトルが一致しないため、中止しました。`);
+  }
+  if (type === "pages" && isFrontPage(item)) {
+    throw new Error("トップページは、イウダケからは非公開にしたり削除したりできません。");
+  }
+  return item;
+}
+
+// 公開中のお知らせ・固定ページを、非公開（下書き）に戻す
+// ※ 利用者が画面で「非公開にする」を押したときだけ呼ばれる
+// ※ 下書きに戻すだけなので、あとで公開し直せる
+export async function unpublishContent(input: ChangeStatusInput): Promise<WpItemSummary> {
+  const item = await getItemForStatusChange(input);
+  if (item.status !== "publish") {
+    throw new Error("公開中ではないため、非公開にする必要はありません。");
+  }
+
+  // 公開状態だけを変える（本文などは送らない）
+  const type = toContentType(input.kind);
+  const updated = await wpFetch<WpRawItem>(
+    `/wp/v2/${type}/${input.id}?context=edit&_fields=id,title,status,date,modified,link`,
+    {
+      method: "POST",
+      body: JSON.stringify({ status: "draft" }),
+    }
+  );
+  return toSummary(updated);
+}
+
+// お知らせ・固定ページを、ゴミ箱に入れる
+// ※ 利用者が画面で「ゴミ箱に入れる」を押したときだけ呼ばれる
+// ※ 完全には削除しない（force を付けない）。WordPressの管理画面の「ゴミ箱」から元に戻せる
+export async function trashContent(input: ChangeStatusInput): Promise<WpItemSummary> {
+  await getItemForStatusChange(input);
+
+  const type = toContentType(input.kind);
+  const trashed = await wpFetch<WpRawItem>(
+    `/wp/v2/${type}/${input.id}?context=edit&_fields=id,title,status,date,modified,link`,
+    { method: "DELETE" }
+  );
+  return toSummary(trashed);
+}

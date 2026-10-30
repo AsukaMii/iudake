@@ -12,6 +12,8 @@ import {
   getPost,
   listPages,
   publishDraftPost,
+  trashContent,
+  unpublishContent,
   listPosts,
 } from "@/lib/adapters/wordpress";
 
@@ -155,5 +157,30 @@ export const tools = {
         .describe("公開するお知らせのタイトル（一覧にあるものと完全に同じ文字）"),
     }),
     execute: async ({ id, title }) => publishDraftPost({ id, title }),
+  }),
+  // お知らせ・固定ページを非公開（下書き）に戻す
+  // ※ 利用者が画面で承認したときだけ実行される（route.ts の toolApproval で設定）
+  unpublishContent: tool({
+    description:
+      "公開中のお知らせ・固定ページを非公開（下書き）に戻す。id と title は listPosts / listPages の一覧にあるものをそのまま使うこと。トップページには使えない。",
+    inputSchema: z.object({
+      kind: z.enum(["post", "page"]).describe("post：お知らせ、page：固定ページ"),
+      id: z.number().int().positive().describe("ID"),
+      title: z.string().min(1).describe("タイトル（一覧にあるものと完全に同じ文字）"),
+    }),
+    execute: async (input) => unpublishContent(input),
+  }),
+
+  // お知らせ・固定ページをゴミ箱に入れる（完全には削除しない）
+  // ※ 利用者が画面で承認したときだけ実行される（route.ts の toolApproval で設定）
+  trashContent: tool({
+    description:
+      "お知らせ・固定ページをゴミ箱に入れる（削除）。完全には削除されず、WordPressの管理画面から元に戻せる。id と title は listPosts / listPages の一覧にあるものをそのまま使うこと。トップページには使えない。",
+    inputSchema: z.object({
+      kind: z.enum(["post", "page"]).describe("post：お知らせ、page：固定ページ"),
+      id: z.number().int().positive().describe("ID"),
+      title: z.string().min(1).describe("タイトル（一覧にあるものと完全に同じ文字）"),
+    }),
+    execute: async (input) => trashContent(input),
   }),
 };
