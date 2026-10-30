@@ -12,6 +12,7 @@ import {
   getPost,
   listPages,
   publishDraftPost,
+  replacePageImage,
   removeFeaturedImage,
   setFeaturedImage,
   trashContent,
@@ -214,5 +215,23 @@ export const tools = {
       postTitle: z.string().min(1).describe("お知らせのタイトル（一覧にあるものと完全に同じ文字）"),
     }),
     execute: async (input) => removeFeaturedImage(input),
+  }),
+  // 固定ページの画像を、別の写真に差し替える（大きさ・配置はそのまま）
+  // ※ 利用者が画面で承認したときだけ実行される（route.ts の toolApproval で設定）
+  replacePageImage: tool({
+    description:
+      "固定ページにすでにある画像を、利用者が添付した写真に差し替える。大きさ・配置は変わらない。oldMediaId は getPage の images から選ぶ。newMediaId には、この会話で利用者が添付した写真の画像IDだけを使う。画像がない場所に新しく足すことはできない。",
+    inputSchema: z.object({
+      pageId: z.number().int().positive().describe("固定ページのID（listPages で確かめる）"),
+      pageTitle: z.string().min(1).describe("固定ページのタイトル（getPage の結果と完全に同じ文字）"),
+      oldMediaId: z.number().int().positive().describe("差し替える今の画像の画像ID（getPage の images にあるもの）"),
+      newMediaId: z.number().int().positive().describe("利用者が添付した写真の画像ID"),
+      altText: z
+        .string()
+        .min(1)
+        .max(150)
+        .describe("新しい写真の代替テキスト。写真に何が写っているかの短い説明"),
+    }),
+    execute: async (input) => replacePageImage(input),
   }),
 };

@@ -540,3 +540,26 @@
   margin-top: 4px;
   border-radius: 8px;
 }
+
+/* 写真の差し替え：変更前・変更後を横に並べる */
+.imageCompare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.imageCompareItem {
+  margin: 0;
+  padding: 12px;
+  background: var(--background);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+/* スマホでは、縦に並べる */
+@media (max-width: 600px) {
+  .imageCompare {
+    grid-template-columns: 1fr;
+  }
+}

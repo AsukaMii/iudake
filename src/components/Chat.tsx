@@ -79,6 +79,10 @@ const TOOL_LABELS: Record<string, { running: string; done: string }> = {
     running: "お知らせの写真を外しています…",
     done: "お知らせの写真を外しました（写真はメディアライブラリに残っています）",
   },
+  replacePageImage: {
+    running: "ページの写真を差し替えています…",
+    done: "ページの写真を差し替えました",
+  },
 };
 
 // 非公開・ゴミ箱の承認画面で使う、種類の呼び方
@@ -103,6 +107,7 @@ const DENIED_LABELS: Record<string, string> = {
   trashContent: "ゴミ箱に入れませんでした（そのまま残っています）",
   setFeaturedImage: "写真を設定しませんでした（お知らせは変わっていません）",
   removeFeaturedImage: "写真を外しませんでした（そのままです）",
+  replacePageImage: "写真を差し替えませんでした（ページは変わっていません）",
 };
 
 // エラーの文面を取り出す
@@ -143,6 +148,15 @@ type FeaturedImageInput = {
   postTitle: string;
   mediaId?: number; // 設定するときだけ
   altText?: string; // 設定するときだけ
+};
+
+// replacePageImage に渡される内容
+type ReplacePageImageInput = {
+  pageId: number;
+  pageTitle: string;
+  oldMediaId: number;
+  newMediaId: number;
+  altText: string;
 };
 
 // メッセージに添える写真の情報（データパート "data-image"）
@@ -436,6 +450,71 @@ function MessageParts({
             );
           }
 
+          // ページの写真の差し替えの承認待ち：変更前・変更後の写真と「反映する／いいえ」ボタンを出す
+          if (part.state === "approval-requested" && name === "replacePageImage") {
+            const input = part.input as ReplacePageImageInput;
+            const oldUrl = images.get(input.oldMediaId);
+            const newUrl = images.get(input.newMediaId);
+            return (
+              <div key={index} className={styles.approval}>
+                <p className={styles.approvalTitle}>
+                  「{input.pageTitle}」のページの写真を、差し替えますか？
+                </p>
+                <div className={styles.imageCompare}>
+                  <figure className={styles.imageCompareItem}>
+                    <figcaption className={styles.diffBefore}>
+                      <span className={styles.diffLabel}>変更前</span>
+                    </figcaption>
+                    {oldUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={oldUrl} alt="今の写真" className={styles.approvalImage} />
+                    ) : (
+                      <p>画像ID {input.oldMediaId}</p>
+                    )}
+                  </figure>
+                  <figure className={styles.imageCompareItem}>
+                    <figcaption className={styles.diffAfter}>
+                      <span className={styles.diffLabel}>変更後</span>
+                    </figcaption>
+                    {newUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={newUrl} alt={input.altText} className={styles.approvalImage} />
+                    ) : (
+                      <p>画像ID {input.newMediaId}</p>
+                    )}
+                  </figure>
+                </div>
+                <dl className={styles.preview}>
+                  <dt>新しい写真の説明（読み上げ用）</dt>
+                  <dd>{input.altText}</dd>
+                </dl>
+                <p className={styles.approvalNote}>
+                  ※ 写真の大きさや配置は変わりません。反映すると、すぐにサイトに表示されます。修正前の内容はWordPressに残るので、あとで元に戻せます。
+                </p>
+                <div className={styles.approvalButtons}>
+                  <button
+                    type="button"
+                    className={styles.approve}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: true })
+                    }
+                  >
+                    反映する
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.deny}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: false })
+                    }
+                  >
+                    いいえ
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
           // 写真を外す承認待ち
           if (part.state === "approval-requested" && name === "removeFeaturedImage") {
             const input = part.input as FeaturedImageInput;
@@ -491,6 +570,7 @@ function MessageParts({
               "editPost",
               "setFeaturedImage",
               "removeFeaturedImage",
+              "replacePageImage",
             ].includes(name)
           ) {
             const output = part.output as PublishPostOutput;
@@ -546,14 +626,22 @@ export function Chat() {
   // アップロードした写真（次のメッセージに添える。1枚だけ）
   const [attachment, setAttachment] = useState<WpMedia | null>(null);
 
-  // 会話の中で添えた写真の一覧（画像ID → 小さい画像のURL）
+  // 会話の中に出てきた写真の一覧（画像ID → 画像のURL）
   // ※ 承認画面で、画像IDから写真のプレビューを表示するために使う
+  //   - 利用者が添えた写真（data-image）
+  //   - getPage の結果にある、ページの画像（差し替えの「変更前」に使う）
   const images = new Map<number, string>();
   for (const message of messages) {
     for (const part of message.parts) {
       if (part.type === "data-image") {
         const image = part.data as ImageData;
         images.set(image.id, image.thumbnailUrl);
+      }
+      if (part.type === "tool-getPage" && part.state === "output-available") {
+        const output = part.output as { images?: { mediaId: number; url: string }[] };
+        for (const image of output.images ?? []) {
+          images.set(image.mediaId, image.url);
+        }
       }
     }
   }

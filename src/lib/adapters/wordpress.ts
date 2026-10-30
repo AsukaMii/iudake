@@ -130,8 +130,15 @@ async function getItem(type: WpContentType, id: number): Promise<WpPageDetail> {
 }
 
 // 固定ページ1件を取得する
-export async function getPage(id: number): Promise<WpPageDetail> {
-  return getItem("pages", id);
+// ※ ページの中にある画像の一覧も一緒に返す（画像の差し替えで、どれを替えるか選ぶため）
+export async function getPage(id: number): Promise<WpPageDetail & { images: PageImage[] }> {
+  const page = await getItem("pages", id);
+  const images = findImageBlocks(page.content).map(({ mediaId, url, alt }) => ({
+    mediaId,
+    url,
+    alt,
+  }));
+  return { ...page, images };
 }
 
 // お知らせ（投稿）1件を取得する
@@ -473,9 +480,9 @@ export async function uploadMedia(input: {
 // アイキャッチ画像（お知らせの代表の画像）
 // ------------------------------------------------------------
 
-// メディアライブラリの画像1件を取得する
+// メディアライブラリの画像1件を、生データのまま取得する
 // ※ 画像ではないもの（PDFなど）や、存在しないIDはエラーにする
-async function getImage(id: number): Promise<WpMedia> {
+async function getRawImage(id: number): Promise<WpRawMedia> {
   const item = await wpFetch<WpRawMedia & { media_type: string }>(
     `/wp/v2/media/${id}?context=edit&_fields=id,source_url,media_details,media_type`
   ).catch(() => {
@@ -484,7 +491,12 @@ async function getImage(id: number): Promise<WpMedia> {
   if (item.media_type !== "image") {
     throw new Error(`画像ID ${id} は画像ではありません。`);
   }
-  return toMedia(item);
+  return item;
+}
+
+// メディアライブラリの画像1件を取得する
+async function getImage(id: number): Promise<WpMedia> {
+  return toMedia(await getRawImage(id));
 }
 
 // お知らせに設定されている、アイキャッチ画像のID（なければ 0）
@@ -556,4 +568,113 @@ export async function removeFeaturedImage(input: {
     }
   );
   return toSummary(post);
+}
+
+// ------------------------------------------------------------
+// 固定ページの画像の差し替え
+// ------------------------------------------------------------
+
+// 固定ページの中にある画像（AIに見せる形）
+export type PageImage = {
+  mediaId: number; // 画像ID
+  url: string; // 表示されている画像のURL
+  alt: string; // 今の代替テキスト
+};
+
+// 本文の中の画像ブロック1つ分
+type ImageBlock = PageImage & {
+  block: string; // ブロック全体の文字（<!-- wp:image ... --> 〜 <!-- /wp:image -->）
+  attrs: string; // ブロックの設定（JSONの文字）
+  sizeSlug: string; // 表示している大きさ（"large" など）
+};
+
+// 本文から、ふつうの「画像」ブロックを探す
+// ※ カバー（背景画像）などのブロックは対象にしない
+function findImageBlocks(content: string): ImageBlock[] {
+  const pattern = /<!-- wp:image(?: (\{[\s\S]*?\}))? -->([\s\S]*?)<!-- \/wp:image -->/g;
+  const blocks: ImageBlock[] = [];
+  for (const match of content.matchAll(pattern)) {
+    const attrs = match[1] ?? "{}";
+    let parsed: { id?: number; sizeSlug?: string } = {};
+    try {
+      parsed = JSON.parse(attrs);
+    } catch {
+      continue; // 読めない設定のブロックは扱わない
+    }
+    if (!parsed.id) continue; // メディアライブラリの画像でないもの（外部のURLなど）は扱わない
+    const html = match[2];
+    blocks.push({
+      block: match[0],
+      attrs,
+      mediaId: parsed.id,
+      sizeSlug: parsed.sizeSlug ?? "full",
+      url: html.match(/<img[^>]*\ssrc="([^"]*)"/)?.[1] ?? "",
+      alt: html.match(/<img[^>]*\salt="([^"]*)"/)?.[1] ?? "",
+    });
+  }
+  return blocks;
+}
+
+// 固定ページの画像を、別の画像に差し替える
+// ※ 利用者が画面で「反映する」を押したときだけ呼ばれる
+// ※ 入れ替えるのは、画像ID・画像のURL・代替テキストだけ。大きさ・配置・角の丸みなどの設定はそのまま
+// ※ 画像が置かれていない場所に、新しく画像を足すことはできない（デザインに関わるため）
+export async function replacePageImage(input: {
+  pageId: number;
+  pageTitle: string; // 承認画面で見せたタイトル
+  oldMediaId: number; // 今の画像の画像ID（getPage の images から選ぶ）
+  newMediaId: number; // 利用者が添えた写真の画像ID
+  altText: string; // 新しい写真の代替テキスト
+}): Promise<WpItemSummary & { image: WpMedia }> {
+  const page = await getItem("pages", input.pageId);
+
+  // 1. タイトルが一致するか
+  if (page.title !== input.pageTitle) {
+    throw new Error("ページのタイトルが一致しないため、中止しました。");
+  }
+  // 2. 代替テキストに、HTMLタグや " を入れさせない（ブロックを壊さないため）
+  if (/[<>"]/.test(input.altText)) {
+    throw new Error("写真の説明に、< > \" の記号は使えません。");
+  }
+  // 3. 差し替える画像が、ページにちょうど1つだけあるか
+  const targets = findImageBlocks(page.content).filter((b) => b.mediaId === input.oldMediaId);
+  if (targets.length === 0) {
+    throw new Error(`画像ID ${input.oldMediaId} の画像が、ページの中に見つかりませんでした。`);
+  }
+  if (targets.length > 1) {
+    throw new Error(`画像ID ${input.oldMediaId} の画像が、ページの中に${targets.length}か所あります。`);
+  }
+  const target = targets[0];
+
+  // 4. 新しい画像が本当にあるか。元のブロックと同じ大きさの画像のURLを使う
+  const raw = await getRawImage(input.newMediaId);
+  const newUrl = raw.media_details?.sizes?.[target.sizeSlug]?.source_url ?? raw.source_url;
+
+  // HTMLの中に入れる代替テキスト（& は &amp; にする。WordPressのエディターと同じ書き方にするため）
+  const altHtml = input.altText.replace(/&/g, "&amp;");
+
+  // 画像ID・画像のURL・代替テキストの4か所だけを置き換える
+  // ※ replace の2つ目に文字を渡すと $ などを特別扱いするので、関数で返す
+  const newAttrs = target.attrs.replace(`"id":${input.oldMediaId}`, () => `"id":${input.newMediaId}`);
+  let newBlock = target.block
+    .replace(target.attrs, () => newAttrs)
+    .replace(`wp-image-${input.oldMediaId}`, () => `wp-image-${input.newMediaId}`)
+    .replace(/(<img[^>]*\ssrc=")[^"]*(")/, (_, before, after) => before + newUrl + after);
+  newBlock = /<img[^>]*\salt="/.test(newBlock)
+    ? newBlock.replace(/(<img[^>]*\salt=")[^"]*(")/, (_, before, after) => before + altHtml + after)
+    : newBlock.replace("<img ", () => `<img alt="${altHtml}" `);
+
+  // 画像そのものにも、代替テキストを設定しておく
+  await wpFetch(`/wp/v2/media/${input.newMediaId}?_fields=id`, {
+    method: "POST",
+    body: JSON.stringify({ alt_text: input.altText }),
+  });
+
+  // 更新する（変更前の内容は、WordPressがリビジョンとして自動で残す）
+  const updated = await updateItem("pages", {
+    id: input.pageId,
+    content: page.content.split(target.block).join(newBlock),
+  });
+  const { id, title, status, date, modified, link } = updated;
+  return { id, title, status, date, modified, link, image: toMedia(raw) };
 }
