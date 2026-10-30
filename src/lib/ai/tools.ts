@@ -12,6 +12,8 @@ import {
   getPost,
   listPages,
   publishDraftPost,
+  removeFeaturedImage,
+  setFeaturedImage,
   trashContent,
   unpublishContent,
   listPosts,
@@ -183,5 +185,34 @@ export const tools = {
       title: z.string().min(1).describe("タイトル（一覧にあるものと完全に同じ文字）"),
     }),
     execute: async (input) => trashContent(input),
+  }),
+  // お知らせのアイキャッチ画像（代表の写真）を設定する・差し替える
+  // ※ 利用者が画面で承認したときだけ実行される（route.ts の toolApproval で設定）
+  setFeaturedImage: tool({
+    description:
+      "お知らせのアイキャッチ画像（代表の写真）を設定する。すでにあれば差し替える。mediaId には、この会話で利用者が添付した写真の画像IDだけを使う。altText は、利用者に聞いた写真の説明を短くまとめたもの。",
+    inputSchema: z.object({
+      postId: z.number().int().positive().describe("お知らせのID（listPosts で確かめる）"),
+      postTitle: z.string().min(1).describe("お知らせのタイトル（一覧にあるものと完全に同じ文字）"),
+      mediaId: z.number().int().positive().describe("利用者が添付した写真の画像ID"),
+      altText: z
+        .string()
+        .min(1)
+        .max(150)
+        .describe("代替テキスト。写真に何が写っているかの短い説明（例：作業着のスタッフ3人が事務所の前に並んでいる）"),
+    }),
+    execute: async (input) => setFeaturedImage(input),
+  }),
+
+  // お知らせのアイキャッチ画像を外す（画像はメディアライブラリに残る）
+  // ※ 利用者が画面で承認したときだけ実行される（route.ts の toolApproval で設定）
+  removeFeaturedImage: tool({
+    description:
+      "お知らせのアイキャッチ画像（代表の写真）を外す。画像はメディアライブラリに残る。",
+    inputSchema: z.object({
+      postId: z.number().int().positive().describe("お知らせのID（listPosts で確かめる）"),
+      postTitle: z.string().min(1).describe("お知らせのタイトル（一覧にあるものと完全に同じ文字）"),
+    }),
+    execute: async (input) => removeFeaturedImage(input),
   }),
 };

@@ -32,6 +32,7 @@ const INSTRUCTIONS = `あなたは「イウダケ」のアシスタントです�
 - お知らせのタイトル・文章の一部を修正する（getPost / editPost）
 - お知らせ・固定ページを非公開（下書き）に戻す（unpublishContent）
 - お知らせをゴミ箱に入れる（trashContent。完全には削除しない。固定ページは削除できない）
+- お知らせのアイキャッチ画像（代表の写真）を設定・差し替え・外す（setFeaturedImage / removeFeaturedImage）
 
 ## ルール
 - やさしい日本語で、短く答える。専門用語はできるだけ使わない
@@ -54,6 +55,11 @@ const INSTRUCTIONS = `あなたは「イウダケ」のアシスタントです�
 - 削除はゴミ箱に入れるだけ。ゴミ箱に入れたら「WordPressの管理画面のゴミ箱から元に戻せます」と伝える
 - トップページは、非公開にも削除にもできないと伝える
 - 固定ページの新規作成・削除はできないと伝える
+- 利用者のメッセージに「画像ID」があるときは、その写真が添付されている。あなたには写真の中身は見えない
+- お知らせに写真を付ける・変えるときは、listPosts でお知らせを確かめ、まだ聞いていなければ「どんな写真ですか？（目の不自由な方が使う読み上げソフト向けの説明になります）」と聞く。答えを短い説明（代替テキスト）にまとめて、文章で確認せずに setFeaturedImage を呼ぶ（画面に写真のプレビューと「反映する／いいえ」のボタンが出る）
+- setFeaturedImage の mediaId には、この会話で利用者が添付した写真の画像IDだけを使う。写真が添付されていなければ、「写真を選ぶ」ボタンで写真を選んでもらう
+- 写真を外すときは、listPosts でお知らせを確かめてから、文章で確認せずに removeFeaturedImage を呼ぶ
+- 固定ページの写真の差し替えは、まだできないと伝える
 - 完全な削除・ゴミ箱から戻す・デザインの変更など、上のツールでできないことは引き受けず、できないと伝える
 - 一覧を見せるときは、タイトルと状態（公開／下書き）を箇条書きにする。日時は必要なときだけ見せる`;
 
@@ -124,7 +130,17 @@ export async function POST(req: Request) {
 
 ## 今日の日付
 今日は${today}（日本時間）です。年が書かれていない日付は、今日より後のいちばん近い日付として考える。`,
-    messages: await convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages, {
+      // 写真の情報（data-image）を、AIが読める文に変える
+      // ※ 中身はブラウザから送られてくるので、画像IDが数字かどうかだけ確かめる
+      //   （本当にある画像かは、設定する直前にサーバーで確かめる）
+      convertDataPart: (part) => {
+        if (part.type !== "data-image") return undefined;
+        const id = (part.data as { id?: unknown })?.id;
+        if (typeof id !== "number" || !Number.isInteger(id) || id <= 0) return undefined;
+        return { type: "text", text: `（利用者が写真を添付しました。画像ID：${id}）` };
+      },
+    }),
     tools,
     // 承認が必要なツール：AIが呼んでも一度止まり、利用者が画面で「はい」を押したときだけ実行される
     toolApproval: {
@@ -134,6 +150,8 @@ export async function POST(req: Request) {
       editPost: "user-approval",
       unpublishContent: "user-approval",
       trashContent: "user-approval",
+      setFeaturedImage: "user-approval",
+      removeFeaturedImage: "user-approval",
     },
     // 承認ボタンを出すときに署名し、押されて戻ってきたときに確かめる
     // （ツール名・呼び出しID・入力内容が書き換えられていたら、実行せずに断る）

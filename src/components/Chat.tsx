@@ -12,6 +12,8 @@ import {
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import styles from "./Chat.module.css";
 import { VoiceInputButton } from "./VoiceInputButton";
+import { ImagePicker } from "./ImagePicker";
+import type { WpMedia } from "@/lib/adapters/wordpress"; // 型だけを使う
 
 // サーバー側（route.ts）と同じ上限。送る前に画面でも知らせる
 const MAX_INPUT_CHARS = 500;
@@ -69,6 +71,14 @@ const TOOL_LABELS: Record<string, { running: string; done: string }> = {
     running: "ゴミ箱に入れています…",
     done: "ゴミ箱に入れました（WordPressの管理画面から元に戻せます）",
   },
+  setFeaturedImage: {
+    running: "お知らせに写真を設定しています…",
+    done: "お知らせに写真を設定しました",
+  },
+  removeFeaturedImage: {
+    running: "お知らせの写真を外しています…",
+    done: "お知らせの写真を外しました（写真はメディアライブラリに残っています）",
+  },
 };
 
 // 非公開・ゴミ箱の承認画面で使う、種類の呼び方
@@ -91,6 +101,8 @@ const DENIED_LABELS: Record<string, string> = {
   editPost: "修正しませんでした（お知らせは変わっていません）",
   unpublishContent: "非公開にしませんでした（公開のままです）",
   trashContent: "ゴミ箱に入れませんでした（そのまま残っています）",
+  setFeaturedImage: "写真を設定しませんでした（お知らせは変わっていません）",
+  removeFeaturedImage: "写真を外しませんでした（そのままです）",
 };
 
 // エラーの文面を取り出す
@@ -125,6 +137,18 @@ type EditPageInput = {
 // unpublishContent・trashContent に渡される内容（種類・ID・タイトル）
 type ChangeStatusInput = { kind: "post" | "page"; id: number; title: string };
 
+// setFeaturedImage・removeFeaturedImage に渡される内容
+type FeaturedImageInput = {
+  postId: number;
+  postTitle: string;
+  mediaId?: number; // 設定するときだけ
+  altText?: string; // 設定するときだけ
+};
+
+// メッセージに添える写真の情報（データパート "data-image"）
+// ※ route.ts で「画像ID：〇〇」という文に変えてからAIに渡す
+type ImageData = { id: number; thumbnailUrl: string };
+
 // publishPost・editPage の結果のうち、画面で使うもの（公開ページのURL）
 type PublishPostOutput = { link: string };
 
@@ -132,14 +156,31 @@ type PublishPostOutput = { link: string };
 function MessageParts({
   message,
   onApprovalResponse,
+  images,
 }: {
   message: UIMessage;
   onApprovalResponse: ApprovalResponder;
+  images: Map<number, string>; // 会話の中で添えた写真（画像ID → 小さい画像のURL）
 }) {
   return (
     <>
       {message.parts.map((part, index) => {
         // 文章
+        // 添えた写真（自分の吹き出しに、小さく表示する）
+        if (part.type === "data-image") {
+          const image = part.data as ImageData;
+          return (
+            // WordPressの画像は外部のURLなので、next/image ではなく img を使う
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={index}
+              src={image.thumbnailUrl}
+              alt="添えた写真"
+              className={styles.messageImage}
+            />
+          );
+        }
+
         if (part.type === "text") {
           return (
             <p key={index} className={styles.text}>
@@ -345,6 +386,93 @@ function MessageParts({
             );
           }
 
+          // 写真を設定する承認待ち：お知らせ・写真のプレビュー・説明と「反映する／いいえ」ボタンを出す
+          if (part.state === "approval-requested" && name === "setFeaturedImage") {
+            const input = part.input as FeaturedImageInput;
+            const thumbnailUrl = input.mediaId ? images.get(input.mediaId) : undefined;
+            return (
+              <div key={index} className={styles.approval}>
+                <p className={styles.approvalTitle}>このお知らせに、写真を設定しますか？</p>
+                <dl className={styles.preview}>
+                  <dt>お知らせ</dt>
+                  <dd>{input.postTitle}</dd>
+                  <dt>写真</dt>
+                  <dd>
+                    {thumbnailUrl ? (
+                      // WordPressの画像は外部のURLなので、next/image ではなく img を使う
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumbnailUrl} alt={input.altText ?? ""} className={styles.approvalImage} />
+                    ) : (
+                      `画像ID ${input.mediaId}`
+                    )}
+                  </dd>
+                  <dt>写真の説明（読み上げ用）</dt>
+                  <dd>{input.altText}</dd>
+                </dl>
+                <p className={styles.approvalNote}>
+                  ※ すでに写真があるときは、この写真に入れ替わります。反映すると、すぐにサイトに表示されます。
+                </p>
+                <div className={styles.approvalButtons}>
+                  <button
+                    type="button"
+                    className={styles.approve}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: true })
+                    }
+                  >
+                    反映する
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.deny}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: false })
+                    }
+                  >
+                    いいえ
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // 写真を外す承認待ち
+          if (part.state === "approval-requested" && name === "removeFeaturedImage") {
+            const input = part.input as FeaturedImageInput;
+            return (
+              <div key={index} className={styles.approval}>
+                <p className={styles.approvalTitle}>このお知らせの写真を、外しますか？</p>
+                <dl className={styles.preview}>
+                  <dt>お知らせ</dt>
+                  <dd>{input.postTitle}</dd>
+                </dl>
+                <p className={styles.approvalNote}>
+                  ※ 写真は、WordPressのメディアライブラリに残ります。
+                </p>
+                <div className={styles.approvalButtons}>
+                  <button
+                    type="button"
+                    className={styles.approve}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: true })
+                    }
+                  >
+                    外す
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.deny}
+                    onClick={() =>
+                      onApprovalResponse({ id: part.approval.id, approved: false })
+                    }
+                  >
+                    いいえ
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
           // 「いいえ」を選んだとき
           if (part.state === "output-denied") {
             return (
@@ -357,7 +485,13 @@ function MessageParts({
           // 公開・修正できたとき：公開ページへのリンクも出す
           if (
             part.state === "output-available" &&
-            (name === "publishPost" || name === "editPage" || name === "editPost")
+            [
+              "publishPost",
+              "editPage",
+              "editPost",
+              "setFeaturedImage",
+              "removeFeaturedImage",
+            ].includes(name)
           ) {
             const output = part.output as PublishPostOutput;
             return (
@@ -409,6 +543,21 @@ export function Chat() {
   // 音声入力を始めたときに、入力欄にすでにあった文字（聞き取った文字はこの続きに足す）
   const voiceBaseRef = useRef("");
 
+  // アップロードした写真（次のメッセージに添える。1枚だけ）
+  const [attachment, setAttachment] = useState<WpMedia | null>(null);
+
+  // 会話の中で添えた写真の一覧（画像ID → 小さい画像のURL）
+  // ※ 承認画面で、画像IDから写真のプレビューを表示するために使う
+  const images = new Map<number, string>();
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type === "data-image") {
+        const image = part.data as ImageData;
+        images.set(image.id, image.thumbnailUrl);
+      }
+    }
+  }
+
   // 新しいメッセージが来たら、いちばん下まで自動でスクロールする
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -422,7 +571,19 @@ export function Chat() {
   // メッセージを送る（入力欄・例のボタンの両方から使う）
   function send(text: string) {
     if (error) clearError(); // 前のエラー表示を消してから送る
-    sendMessage({ text });
+    if (attachment) {
+      // 写真があれば、文章と一緒に「data-image」として添える
+      const image: ImageData = { id: attachment.id, thumbnailUrl: attachment.thumbnailUrl };
+      sendMessage({
+        parts: [
+          { type: "data-image", data: image },
+          { type: "text", text },
+        ],
+      });
+      setAttachment(null); // 送ったら、入力欄の上のプレビューは消す
+    } else {
+      sendMessage({ text });
+    }
     setInput("");
   }
 
@@ -482,6 +643,7 @@ export function Chat() {
             <MessageParts
               message={message}
               onApprovalResponse={addToolApprovalResponse}
+              images={images}
             />
           </div>
         ))}
@@ -502,6 +664,25 @@ export function Chat() {
 
       {/* 入力フォーム */}
       <form className={styles.form} onSubmit={handleSubmit}>
+        {/* アップロードした写真のプレビュー */}
+        {attachment && (
+          <div className={styles.attachment}>
+            {/* WordPressの画像は外部のURLなので、next/image ではなく img を使う */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={attachment.thumbnailUrl} alt="" className={styles.attachmentImage} />
+            <p className={styles.attachmentText}>この写真を、次のメッセージに添えます</p>
+            <button
+              type="button"
+              className={styles.attachmentRemove}
+              onClick={() => setAttachment(null)}
+              aria-label="写真を外す"
+            >
+              {/* 見た目は「×」だけ。読み上げは aria-label の「写真を外す」 */}
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+        )}
+
         <label htmlFor="chat-input" className={styles.srOnly}>
           やりたいことを入力
         </label>
@@ -525,6 +706,8 @@ export function Chat() {
             onTranscript={(text) => setInput(voiceBaseRef.current + text)}
             disabled={isBusy}
           />
+          {/* 写真：選ぶとメディアライブラリに入り、入力欄の上にプレビューが出る */}
+          <ImagePicker onUploaded={setAttachment} disabled={isBusy} />
           <p
             id="chat-input-help"
             className={`${styles.count} ${tooLong ? styles.countOver : ""}`}

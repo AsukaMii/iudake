@@ -135,8 +135,16 @@ export async function getPage(id: number): Promise<WpPageDetail> {
 }
 
 // お知らせ（投稿）1件を取得する
-export async function getPost(id: number): Promise<WpPageDetail> {
-  return getItem("posts", id);
+// ※ 今のアイキャッチ画像（なければ null）も一緒に返す
+export async function getPost(
+  id: number
+): Promise<WpPageDetail & { featuredImage: WpMedia | null }> {
+  const [post, featuredMediaId] = await Promise.all([
+    getItem("posts", id),
+    getFeaturedMediaId(id),
+  ]);
+  const featuredImage = featuredMediaId ? await getImage(featuredMediaId) : null;
+  return { ...post, featuredImage };
 }
 
 // HTMLとして特別な意味を持つ文字を、安全な形に置き換える
@@ -409,4 +417,143 @@ export async function trashContent(input: ChangeStatusInput): Promise<WpItemSumm
     { method: "DELETE" }
   );
   return toSummary(trashed);
+}
+
+// ------------------------------------------------------------
+// 画像（メディアライブラリ）
+// ------------------------------------------------------------
+
+// アップロードした画像の情報
+export type WpMedia = {
+  id: number; // 画像ID（アイキャッチ画像の設定などで使う）
+  url: string; // 元の大きさの画像のURL
+  thumbnailUrl: string; // プレビュー用の小さい画像のURL（なければ元の画像）
+};
+
+// REST APIから返ってくる、画像の生データ（必要な項目だけ）
+type WpRawMedia = {
+  id: number;
+  source_url: string;
+  media_details?: { sizes?: Record<string, { source_url: string }> };
+};
+
+// 生データを、画面で使う形に変換する
+function toMedia(item: WpRawMedia): WpMedia {
+  const sizes = item.media_details?.sizes ?? {};
+  return {
+    id: item.id,
+    url: item.source_url,
+    thumbnailUrl: sizes.medium?.source_url ?? item.source_url,
+  };
+}
+
+// 画像を、メディアライブラリにアップロードする
+// ※ ここではページやお知らせには表示されない（設定は、利用者が承認したときに別で行う）
+export async function uploadMedia(input: {
+  data: ArrayBuffer; // 画像のデータ
+  mimeType: string; // "image/jpeg" など
+  fileName: string; // 半角英数字のファイル名（日本語は文字化けすることがあるため）
+}): Promise<WpMedia> {
+  const item = await wpFetch<WpRawMedia>(
+    "/wp/v2/media?_fields=id,source_url,media_details",
+    {
+      method: "POST",
+      body: input.data,
+      headers: {
+        "Content-Type": input.mimeType,
+        // WordPressに、ファイル名を伝える
+        "Content-Disposition": `attachment; filename="${input.fileName}"`,
+      },
+    }
+  );
+  return toMedia(item);
+}
+
+// ------------------------------------------------------------
+// アイキャッチ画像（お知らせの代表の画像）
+// ------------------------------------------------------------
+
+// メディアライブラリの画像1件を取得する
+// ※ 画像ではないもの（PDFなど）や、存在しないIDはエラーにする
+async function getImage(id: number): Promise<WpMedia> {
+  const item = await wpFetch<WpRawMedia & { media_type: string }>(
+    `/wp/v2/media/${id}?context=edit&_fields=id,source_url,media_details,media_type`
+  ).catch(() => {
+    throw new Error(`画像ID ${id} の画像が見つかりませんでした。`);
+  });
+  if (item.media_type !== "image") {
+    throw new Error(`画像ID ${id} は画像ではありません。`);
+  }
+  return toMedia(item);
+}
+
+// お知らせに設定されている、アイキャッチ画像のID（なければ 0）
+async function getFeaturedMediaId(postId: number): Promise<number> {
+  const item = await wpFetch<{ featured_media: number }>(
+    `/wp/v2/posts/${postId}?context=edit&_fields=featured_media`
+  );
+  return item.featured_media ?? 0;
+}
+
+// お知らせのタイトルが一致するか確かめる（違うお知らせを変えないように）
+async function checkPostTitle(postId: number, title: string): Promise<void> {
+  const post = await getItem("posts", postId);
+  if (post.title !== title) {
+    throw new Error("お知らせのタイトルが一致しないため、中止しました。");
+  }
+}
+
+// お知らせのアイキャッチ画像を設定する（すでにあれば差し替える）
+// ※ 利用者が画面で「反映する」を押したときだけ呼ばれる
+export async function setFeaturedImage(input: {
+  postId: number;
+  postTitle: string; // 承認画面で見せたタイトル
+  mediaId: number; // 利用者が添えた写真の画像ID
+  altText: string; // 代替テキスト（利用者に聞いた、写真の説明）
+}): Promise<WpItemSummary & { image: WpMedia }> {
+  await checkPostTitle(input.postId, input.postTitle);
+  const image = await getImage(input.mediaId); // 本当にある画像か
+
+  // 代替テキストにも、HTMLタグは入れさせない
+  if (/[<>]/.test(input.altText)) {
+    throw new Error("HTMLタグを含む説明は使えません。");
+  }
+
+  // 1. 画像に、代替テキストを設定する
+  await wpFetch(`/wp/v2/media/${input.mediaId}?_fields=id`, {
+    method: "POST",
+    body: JSON.stringify({ alt_text: input.altText }),
+  });
+
+  // 2. お知らせに、アイキャッチ画像を設定する（変えるのは featured_media だけ）
+  const post = await wpFetch<WpRawItem>(
+    `/wp/v2/posts/${input.postId}?context=edit&_fields=id,title,status,date,modified,link`,
+    {
+      method: "POST",
+      body: JSON.stringify({ featured_media: input.mediaId }),
+    }
+  );
+  return { ...toSummary(post), image };
+}
+
+// お知らせのアイキャッチ画像を外す
+// ※ 利用者が画面で「外す」を押したときだけ呼ばれる
+// ※ 画像そのものは、メディアライブラリに残す
+export async function removeFeaturedImage(input: {
+  postId: number;
+  postTitle: string;
+}): Promise<WpItemSummary> {
+  await checkPostTitle(input.postId, input.postTitle);
+  if ((await getFeaturedMediaId(input.postId)) === 0) {
+    throw new Error("このお知らせには、写真が設定されていません。");
+  }
+
+  const post = await wpFetch<WpRawItem>(
+    `/wp/v2/posts/${input.postId}?context=edit&_fields=id,title,status,date,modified,link`,
+    {
+      method: "POST",
+      body: JSON.stringify({ featured_media: 0 }), // 0 で「なし」になる
+    }
+  );
+  return toSummary(post);
 }

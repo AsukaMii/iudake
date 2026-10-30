@@ -475,3 +475,68 @@
   font-size: 0.85rem;
   color: var(--color-error);
 }
+
+/* アップロードした写真のプレビュー（入力欄の上） */
+.attachment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--color-primary-light);
+  border-radius: var(--radius);
+}
+
+.attachmentImage {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  object-fit: cover; /* 縦長・横長の写真も、四角に収める */
+  border-radius: 8px;
+}
+
+.attachmentText {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+/* 「×」ボタン：丸く、指で押しやすい大きさ（44px）にする */
+.attachmentRemove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: var(--background);
+  border: 2px solid var(--color-error); /* 赤で「取り消す」ボタンだとわかるようにする */
+  border-radius: 50%;
+  color: var(--color-error);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* マウスを乗せたら、赤で塗る */
+.attachmentRemove:hover {
+  background: var(--color-error);
+  color: #fff;
+}
+
+/* 吹き出しの中の、添えた写真 */
+.messageImage {
+  display: block;
+  max-width: 200px;
+  width: 100%;
+  margin-bottom: 8px;
+  border-radius: 8px;
+}
+
+/* 承認画面の写真のプレビュー */
+.approvalImage {
+  display: block;
+  max-width: 240px;
+  width: 100%;
+  margin-top: 4px;
+  border-radius: 8px;
+}
