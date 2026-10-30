@@ -171,13 +171,14 @@ export const tools = {
     execute: async (input) => unpublishContent(input),
   }),
 
-  // お知らせ・固定ページをゴミ箱に入れる（完全には削除しない）
+  // お知らせをゴミ箱に入れる（完全には削除しない）
   // ※ 利用者が画面で承認したときだけ実行される（route.ts の toolApproval で設定）
+  // ※ 固定ページは削除させない（kind は "post" だけ）
   trashContent: tool({
     description:
-      "お知らせ・固定ページをゴミ箱に入れる（削除）。完全には削除されず、WordPressの管理画面から元に戻せる。id と title は listPosts / listPages の一覧にあるものをそのまま使うこと。トップページには使えない。",
+      "お知らせをゴミ箱に入れる（削除）。完全には削除されず、WordPressの管理画面から元に戻せる。id と title は listPosts の一覧にあるものをそのまま使うこと。固定ページには使えない。",
     inputSchema: z.object({
-      kind: z.enum(["post", "page"]).describe("post：お知らせ、page：固定ページ"),
+      kind: z.enum(["post"]).describe("post：お知らせ（固定ページは削除できない）"),
       id: z.number().int().positive().describe("ID"),
       title: z.string().min(1).describe("タイトル（一覧にあるものと完全に同じ文字）"),
     }),

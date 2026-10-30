@@ -393,10 +393,14 @@ export async function unpublishContent(input: ChangeStatusInput): Promise<WpItem
   return toSummary(updated);
 }
 
-// お知らせ・固定ページを、ゴミ箱に入れる
+// お知らせを、ゴミ箱に入れる
 // ※ 利用者が画面で「ゴミ箱に入れる」を押したときだけ呼ばれる
 // ※ 完全には削除しない（force を付けない）。WordPressの管理画面の「ゴミ箱」から元に戻せる
+// ※ 固定ページは、イウダケからは削除させない（ツールの定義でも止めているが、念のためここでも止める）
 export async function trashContent(input: ChangeStatusInput): Promise<WpItemSummary> {
+  if (input.kind !== "post") {
+    throw new Error("固定ページは、イウダケからは削除できません。");
+  }
   await getItemForStatusChange(input);
 
   const type = toContentType(input.kind);
